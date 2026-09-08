@@ -1,8 +1,7 @@
 package com.bettercontent.worldlifecyclemanager;
 
-import com.mojang.datafixers.util.Pair;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Holder;
+import net.minecraft.core.QuartPos;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.arguments.EntityArgument;
@@ -19,20 +18,25 @@ import net.minecraftforge.network.NetworkHooks;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.storage.LevelResource;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
+import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.CompletableFuture;
 
 public final class PrestigeCoordinator {
     private static int stopCountdown = -1;
     private static int shutdownPoll = 0;
+    private static LandingSearchJob landingSearch;
 
     private PrestigeCoordinator() {}
 
@@ -184,6 +188,7 @@ public final class PrestigeCoordinator {
     @SubscribeEvent
     public static void onServerStarted(ServerStartedEvent event) {
         MinecraftServer server = event.getServer();
+        cancelLandingSearch();
         if (!PrestigeService.supportsPrestigeReset(server)) return;
         PrestigeNetwork.tickSync(server);
         Path successorPath = PrestigeService.control(server).resolve("successor-request-v5.tsv");
@@ -201,25 +206,9 @@ public final class PrestigeCoordinator {
                 throw new IllegalStateException("successor request does not match the active lineage generation");
             }
             ServerLevel level = server.overworld();
-            LandingResult landing = resolveLanding(level, successor, perks);
-            boolean foundExact = landing != null;
-            BlockPos spawn = foundExact ? landing.pos() : level.getSharedSpawnPos();
-            if (foundExact) configureSuccessorSpawn(server, level, spawn);
-            String actualBiome = level.getBiome(spawn).unwrapKey()
-                    .map(key -> key.location().toString()).orElse("minecraft:the_void");
-            boolean fresh = freshDirectory(server.getWorldPath(LevelResource.PLAYER_DATA_DIR))
-                    && freshDirectory(server.getWorldPath(LevelResource.PLAYER_ADVANCEMENTS_DIR))
-                    && freshDirectory(server.getWorldPath(LevelResource.PLAYER_STATS_DIR))
-                    && server.getPlayerCount() == 0 && foundExact;
-            if (!Files.isRegularFile(server.getWorldPath(LevelResource.LEVEL_DATA_FILE))) {
-                throw new IllegalStateException("successor level.dat is missing");
-            }
-            String resolvedBiome = foundExact ? landing.resolvedBiome() : "-";
-            PrestigeContracts.writeHealth(PrestigeService.control(server).resolve("health-result-v5.tsv"), successor,
-                    level.getSeed(), resolvedBiome, actualBiome, PrestigeService.worldName(server), fresh, foundExact);
-            PrestigePerks.writeHealth(server, successor, perks, resolvedBiome, spawn);
-            server.sendSystemMessage(Component.literal("Prestige successor health published for " + successor.transactionId()
-                    + " biome=" + actualBiome));
+            landingSearch = new LandingSearchJob(server, level, successor, perks, successorPath);
+            server.sendSystemMessage(Component.literal("Prestige successor landing search started for "
+                    + successor.transactionId()));
         } catch (Exception error) {
             server.sendSystemMessage(Component.literal("Prestige successor health failed: " + error.getMessage()));
         }
@@ -237,39 +226,6 @@ public final class PrestigeCoordinator {
         level.getChunkSource().addRegionTicket(TicketType.START, target, 11, Unit.INSTANCE);
         // Avoid vanilla's random 21x21 respawn search synchronously loading neighboring C2ME chunks.
         level.getGameRules().getRule(GameRules.RULE_SPAWN_RADIUS).set(0, server);
-    }
-
-    private static LandingResult resolveLanding(ServerLevel level, PrestigeContracts.Successor successor,
-                                                PrestigePerks.Build perks) {
-        for (String target : successor.biomes()) {
-            Pair<BlockPos, Holder<Biome>> found = findBiome(level, target);
-            if (found == null) continue;
-            BlockPos surface = findMatchingSurface(level, found.getFirst(), new ResourceLocation(target));
-            if (surface != null) return new LandingResult(surface, target);
-        }
-        return null;
-    }
-
-    private static BlockPos findMatchingSurface(ServerLevel level, BlockPos candidate, ResourceLocation requested) {
-        int[] offsets = {0, 4, -4, 8, -8, 16, -16, 32, -32};
-        for (int xOffset : offsets) {
-            for (int zOffset : offsets) {
-                int x = candidate.getX() + xOffset;
-                int z = candidate.getZ() + zOffset;
-                int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
-                BlockPos surface = new BlockPos(x, y, z);
-                boolean matches = level.getBiome(surface).unwrapKey()
-                        .map(key -> key.location().equals(requested)).orElse(false);
-                if (matches) return surface;
-            }
-        }
-        return null;
-    }
-
-    private static Pair<BlockPos, Holder<Biome>> findBiome(ServerLevel level, String id) {
-        ResourceLocation requested = new ResourceLocation(id);
-        return level.findClosestBiome3d(holder -> holder.unwrapKey().map(key -> key.location().equals(requested)).orElse(false),
-                level.getSharedSpawnPos(), 16_384, 32, 64);
     }
 
     static java.util.List<String> parseBiomeArguments(String input) {
@@ -310,6 +266,7 @@ public final class PrestigeCoordinator {
         if (event.phase != TickEvent.Phase.END) return;
         MinecraftServer server = event.getServer();
         if (!PrestigeService.supportsPrestigeReset(server)) return;
+        tickLandingSearch(server);
         if (stopCountdown >= 0 && --stopCountdown <= 0) {
             stopCountdown = -1;
             server.halt(false);
@@ -330,6 +287,180 @@ public final class PrestigeCoordinator {
             }
         } catch (Exception error) {
             server.sendSystemMessage(Component.literal("Ignoring invalid prestige shutdown request: " + error.getMessage()));
+        }
+    }
+
+    @SubscribeEvent
+    public static void onServerStopping(ServerStoppingEvent event) {
+        if (landingSearch != null && landingSearch.server == event.getServer()) cancelLandingSearch();
+    }
+
+    private static void tickLandingSearch(MinecraftServer server) {
+        LandingSearchJob active = landingSearch;
+        if (active == null || active.server != server) return;
+        try {
+            if (!active.requestStillPresent()) {
+                cancelLandingSearch();
+                server.sendSystemMessage(Component.literal("Prestige successor landing search cancelled because its request changed"));
+                return;
+            }
+            LandingSearchJob.TickResult result = active.tick();
+            if (result.waiting()) return;
+            landingSearch = null;
+            publishSuccessorHealth(server, active.level, active.successor, active.perks, result.landing());
+        } catch (Exception error) {
+            cancelLandingSearch();
+            server.sendSystemMessage(Component.literal("Prestige successor health failed: " + error.getMessage()));
+        }
+    }
+
+    private static void publishSuccessorHealth(MinecraftServer server, ServerLevel level,
+                                               PrestigeContracts.Successor successor, PrestigePerks.Build perks,
+                                               LandingResult landing) throws java.io.IOException {
+        boolean foundExact = landing != null;
+        BlockPos spawn = foundExact ? landing.pos() : level.getSharedSpawnPos();
+        if (foundExact) configureSuccessorSpawn(server, level, spawn);
+        String actualBiome = level.getBiome(spawn).unwrapKey()
+                .map(key -> key.location().toString()).orElse("minecraft:the_void");
+        boolean fresh = freshDirectory(server.getWorldPath(LevelResource.PLAYER_DATA_DIR))
+                && freshDirectory(server.getWorldPath(LevelResource.PLAYER_ADVANCEMENTS_DIR))
+                && freshDirectory(server.getWorldPath(LevelResource.PLAYER_STATS_DIR))
+                && server.getPlayerCount() == 0 && foundExact;
+        if (!Files.isRegularFile(server.getWorldPath(LevelResource.LEVEL_DATA_FILE))) {
+            throw new IllegalStateException("successor level.dat is missing");
+        }
+        String resolvedBiome = foundExact ? landing.resolvedBiome() : "-";
+        PrestigeContracts.writeHealth(PrestigeService.control(server).resolve("health-result-v5.tsv"), successor,
+                level.getSeed(), resolvedBiome, actualBiome, PrestigeService.worldName(server), fresh, foundExact);
+        PrestigePerks.writeHealth(server, successor, perks, resolvedBiome, spawn);
+        server.sendSystemMessage(Component.literal("Prestige successor health published for " + successor.transactionId()
+                + " biome=" + actualBiome));
+    }
+
+    private static void cancelLandingSearch() {
+        if (landingSearch != null) landingSearch.cancel();
+        landingSearch = null;
+    }
+
+    private static final class LandingSearchJob {
+        private static final int SEARCH_RADIUS_BLOCKS = 16_384;
+        private static final int SEARCH_STEP_BLOCKS = 128;
+        private static final int PROBES_PER_TICK = 512;
+        private static final int SURFACE_CHECKS_PER_TICK = 8;
+        private static final int MAX_TOTAL_TICKS = 4_000;
+        private static final int[] SURFACE_OFFSETS = {0, 4, -4, 8, -8, 16, -16, 32, -32};
+
+        private final MinecraftServer server;
+        private final ServerLevel level;
+        private final PrestigeContracts.Successor successor;
+        private final PrestigePerks.Build perks;
+        private final Path requestPath;
+        private final IncrementalLandingSearch search;
+        private IncrementalLandingSearch.Probe surfaceProbe;
+        private int surfaceOffsetIndex;
+        private BlockPos pendingSurface;
+        private CompletableFuture<ChunkAccess> pendingChunk;
+        private int requestCheckCountdown = 20;
+
+        private LandingSearchJob(MinecraftServer server, ServerLevel level,
+                                 PrestigeContracts.Successor successor, PrestigePerks.Build perks, Path requestPath) {
+            this.server = server;
+            this.level = level;
+            this.successor = successor;
+            this.perks = perks;
+            this.requestPath = requestPath;
+            BlockPos origin = level.getSharedSpawnPos();
+            this.search = new IncrementalLandingSearch(successor.biomes(), origin.getX(), origin.getZ(),
+                    SEARCH_STEP_BLOCKS, SEARCH_RADIUS_BLOCKS, MAX_TOTAL_TICKS);
+        }
+
+        private boolean requestStillPresent() throws java.io.IOException {
+            if (--requestCheckCountdown > 0) return true;
+            requestCheckCountdown = 20;
+            return Files.isRegularFile(requestPath) && successor.equals(PrestigeContracts.readSuccessor(requestPath));
+        }
+
+        private TickResult tick() {
+            if (search.deadlineReached()) {
+                cancel();
+                return TickResult.complete(null);
+            }
+            LandingResult surface = pollSurface();
+            if (surface != null) return TickResult.complete(surface);
+            if (surfaceProbe != null || pendingChunk != null) return TickResult.pending();
+
+            int sampleQuartY = QuartPos.fromBlock(level.getSeaLevel());
+            IncrementalLandingSearch.Step step = search.advance(PROBES_PER_TICK, probe -> {
+                ResourceLocation requested = new ResourceLocation(probe.preference());
+                return level.getUncachedNoiseBiome(QuartPos.fromBlock(probe.x()), sampleQuartY,
+                                QuartPos.fromBlock(probe.z()))
+                        .unwrapKey().map(key -> key.location().equals(requested)).orElse(false);
+            });
+            if (step.candidate() != null) {
+                surfaceProbe = step.candidate();
+                surfaceOffsetIndex = 0;
+                requestNextSurface();
+                return TickResult.pending();
+            }
+            return step.exhausted() ? TickResult.complete(null) : TickResult.pending();
+        }
+
+        private LandingResult pollSurface() {
+            for (int checked = 0; checked < SURFACE_CHECKS_PER_TICK && surfaceProbe != null; checked++) {
+                if (pendingChunk == null) {
+                    if (!requestNextSurface()) {
+                        surfaceProbe = null;
+                        return null;
+                    }
+                }
+                if (!pendingChunk.isDone()) return null;
+                ChunkAccess chunk;
+                try {
+                    chunk = pendingChunk.getNow(null);
+                } catch (RuntimeException ignored) {
+                    chunk = null;
+                }
+                BlockPos candidate = pendingSurface;
+                pendingChunk = null;
+                pendingSurface = null;
+                if (chunk != null) {
+                    int y = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                            candidate.getX() & 15, candidate.getZ() & 15);
+                    BlockPos surface = new BlockPos(candidate.getX(), y, candidate.getZ());
+                    ResourceLocation requested = new ResourceLocation(surfaceProbe.preference());
+                    boolean matches = level.getBiome(surface).unwrapKey()
+                            .map(key -> key.location().equals(requested)).orElse(false);
+                    if (matches) return new LandingResult(surface, surfaceProbe.preference());
+                }
+            }
+            return null;
+        }
+
+        private boolean requestNextSurface() {
+            if (surfaceProbe == null || surfaceOffsetIndex >= SURFACE_OFFSETS.length * SURFACE_OFFSETS.length) {
+                return false;
+            }
+            int xOffset = SURFACE_OFFSETS[surfaceOffsetIndex / SURFACE_OFFSETS.length];
+            int zOffset = SURFACE_OFFSETS[surfaceOffsetIndex % SURFACE_OFFSETS.length];
+            surfaceOffsetIndex++;
+            pendingSurface = new BlockPos(surfaceProbe.x() + xOffset, 0, surfaceProbe.z() + zOffset);
+            ChunkPos chunk = new ChunkPos(pendingSurface);
+            pendingChunk = level.getChunkSource().getChunkFuture(chunk.x, chunk.z, ChunkStatus.FULL, true)
+                    .thenApply(either -> either.left().orElse(null));
+            return true;
+        }
+
+        private void cancel() {
+            search.cancel();
+            if (pendingChunk != null) pendingChunk.cancel(false);
+            pendingChunk = null;
+            pendingSurface = null;
+            surfaceProbe = null;
+        }
+
+        private record TickResult(boolean waiting, LandingResult landing) {
+            private static TickResult pending() { return new TickResult(true, null); }
+            private static TickResult complete(LandingResult landing) { return new TickResult(false, landing); }
         }
     }
 }

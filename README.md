@@ -8,6 +8,8 @@ Operators publish lineage schematics directly from the World Condenser's Schemat
 
 The World Condenser also exposes a six-node, operator-controlled world-shaping perk tree. Each upcoming prestige supplies one point. Operators may respec before staging, while the staged build is transactionally bound to the successor and only becomes active after verified lineage advancement. Perks expand biome choices, improve or redirect spawn placement, add a fallback biome, and optionally authorize a fourth successor attempt; they never grant player inventory or disable lineage schematics.
 
+Successor biome preferences are resolved in their configured order by a bounded search advanced over server ticks. Biome probes are nearest-first, chunk generation is requested asynchronously with at most one landing chunk in flight, and a changed request or stopping server cancels the cursor. Exhausting the bounded search or reaching its 4,000-tick deadline retains the generated world's shared spawn and publishes an unresolved health result so the supervisor can safely retry or roll back.
+
 Create Schematicannons gain persistent per-cannon material substitutions. Open the normal cannon menu, select a required ordinary block, then click the Fallback ghost slot while carrying the replacement block. The server validates the rule, pauses an active cannon when rules change, preserves compatible block-state properties, and only substitutes when the original is unavailable. Fluid-containing blocks, block entities, multi-item requirements, cycles, and self-substitutions are rejected. Native uses of the fallback material are reserved before substitutions consume it.
 
 ## Development
