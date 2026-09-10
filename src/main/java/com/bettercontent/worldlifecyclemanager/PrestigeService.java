@@ -1,5 +1,7 @@
 package com.bettercontent.worldlifecyclemanager;
 
+import com.bettercontent.worldlifecyclemanager.api.event.SchematicPublishedEvent;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
@@ -11,6 +13,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import net.minecraftforge.common.MinecraftForge;
 
 public final class PrestigeService {
     public enum Recovery { NONE, DISCARD_DRAFT, DISCARD_STAGED }
@@ -378,9 +381,9 @@ public final class PrestigeService {
         String author = player.getGameProfile().getName();
         long generation = lineage(player.server).generation();
         SchematicLibrary.Entry entry = SchematicLibrary.publish(player.server, author, fileName, compressedNbt, generation);
-        String threadEpisode=java.util.UUID.nameUUIDFromBytes((author+"\u0000"+fileName).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
-        ThreadsBridge.emit(player, "schematic_capture", "substantial",threadEpisode);
-        ThreadsBridge.emit(player, "schematic_publish", "correlated",threadEpisode);
+        String episodeId=java.util.UUID.nameUUIDFromBytes((author+"\u0000"+fileName).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+        MinecraftForge.EVENT_BUS.post(new SchematicPublishedEvent(player, entry.id(), entry.sha256(),
+                entry.originalName(), entry.generation(), episodeId));
         return entry;
     }
 

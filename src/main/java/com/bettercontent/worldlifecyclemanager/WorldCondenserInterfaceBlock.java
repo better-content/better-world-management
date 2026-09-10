@@ -1,5 +1,7 @@
 package com.bettercontent.worldlifecyclemanager;
 
+import com.bettercontent.worldlifecyclemanager.api.event.WorldCondenserAccessedEvent;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -59,8 +61,9 @@ public final class WorldCondenserInterfaceBlock extends BaseEntityBlock {
                 serverPlayer.displayClientMessage(Component.translatable("message.world_lifecycle_manager.condenser_operator_required"), true);
                 return InteractionResult.CONSUME;
             }
-            String threadEpisode=java.util.UUID.nameUUIDFromBytes((serverPlayer.getUUID()+":"+level.dimension().location()+":"+pos.asLong()).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
-            ThreadsBridge.emit(serverPlayer,"condenser","formed",threadEpisode);
+            String episodeId=java.util.UUID.nameUUIDFromBytes((serverPlayer.getUUID()+":"+level.dimension().location()+":"+pos.asLong()).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+            net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(new WorldCondenserAccessedEvent(
+                    serverPlayer, level.dimension(), pos, episodeId));
             if (!PrestigeNetwork.allowPhysicalOpen(serverPlayer)) return InteractionResult.CONSUME;
             try {
                 NetworkHooks.openScreen(serverPlayer, condenser, buffer -> {
