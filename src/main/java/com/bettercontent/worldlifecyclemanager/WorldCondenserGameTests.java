@@ -172,12 +172,34 @@ public final class WorldCondenserGameTests {
         var source = new ResourceLocation("minecraft", "stone");
         var target = new ResourceLocation("minecraft", "cobblestone");
         access.worldLifecycleManager$setSubstitution(source, target);
+        java.util.UUID owner=java.util.UUID.randomUUID();access.worldLifecycleManager$author(source,owner);
         CompoundTag saved = cannon.getUpdateTag();
         access.worldLifecycleManager$clearSubstitutions();
         cannon.handleUpdateTag(saved);
-        if (!target.equals(access.worldLifecycleManager$substitutions().get(source))) {
+        if (!owner.equals(access.worldLifecycleManager$author(source)) || !target.equals(access.worldLifecycleManager$substitutions().get(source))) {
             helper.fail("Schematicannon substitution rule did not survive NBT synchronization"); return;
         }
         helper.succeed();
     }
+    public static final class SubstitutionProbe {
+        int placed;
+        @net.minecraftforge.eventbus.api.SubscribeEvent public void placed(com.bettercontent.worldlifecyclemanager.api.event.SchematicSubstitutionEvent event){placed++;}
+    }
+    @GameTest(templateNamespace=PrestigeMod.MOD_ID,template="empty",timeoutTicks=100)
+    public static void substitutedFlightPersistsAndAwardsOnlyOnPlacement(GameTestHelper helper){
+        var pos=helper.absolutePos(new BlockPos(2,2,2));
+        var flight=new com.simibubi.create.content.schematics.cannon.LaunchedItem.ForBlockState(pos.above(),pos,new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.COBBLESTONE),net.minecraft.world.level.block.Blocks.COBBLESTONE.defaultBlockState(),null);
+        var provenance=new CompoundTag();provenance.putUUID("owner",java.util.UUID.randomUUID());provenance.putUUID("operation",java.util.UUID.randomUUID());provenance.putString("source","minecraft:stone");provenance.putString("target","minecraft:cobblestone");
+        ((SchematicSubstitutionFlight)flight).worldLifecycleManager$provenance(provenance);
+        var restored=com.simibubi.create.content.schematics.cannon.LaunchedItem.fromNBT(flight.serializeNBT(),helper.getLevel().holderLookup(net.minecraft.core.registries.Registries.BLOCK));
+        helper.assertTrue(((SchematicSubstitutionFlight)restored).worldLifecycleManager$provenance().equals(provenance),"Flight lost rule author on restart");
+        var probe=new SubstitutionProbe();net.minecraftforge.common.MinecraftForge.EVENT_BUS.register(probe);
+        try {
+            restored.ticksRemaining=2;restored.update(helper.getLevel());helper.assertTrue(probe.placed==0,"In-flight substitute was awarded before placement");
+            restored.ticksRemaining=0;restored.update(helper.getLevel());helper.assertTrue(probe.placed==1,"Real substituted placement did not emit evidence");
+            restored.update(helper.getLevel());helper.assertTrue(probe.placed==1,"Repeated flight update emitted duplicate evidence");
+        } finally {net.minecraftforge.common.MinecraftForge.EVENT_BUS.unregister(probe);}
+        helper.succeed();
+    }
+
 }

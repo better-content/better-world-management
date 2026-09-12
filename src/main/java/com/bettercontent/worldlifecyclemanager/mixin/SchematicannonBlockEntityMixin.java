@@ -29,11 +29,13 @@ public abstract class SchematicannonBlockEntityMixin implements SchematicannonSu
     @Unique private static final String WORLD_LIFECYCLE_MANAGER_RULES = "WorldLifecycleManagerSubstitutions";
     @Unique private final LinkedHashMap<ResourceLocation, ResourceLocation> worldLifecycleManager$rules = new LinkedHashMap<>();
 
+    @Unique private final Map<ResourceLocation,java.util.UUID> worldLifecycleManager$authors=new LinkedHashMap<>();
+    @Unique private ResourceLocation worldLifecycleManager$pendingSource,worldLifecycleManager$pendingTarget;
     @Shadow public SchematicPrinter printer;
 
     @Inject(method = "read", at = @At("RETURN"))
     private void worldLifecycleManager$read(CompoundTag tag, boolean clientPacket, CallbackInfo ci) {
-        worldLifecycleManager$rules.clear();
+        worldLifecycleManager$rules.clear(); worldLifecycleManager$authors.clear();
         ListTag list = tag.getList(WORLD_LIFECYCLE_MANAGER_RULES, Tag.TAG_COMPOUND);
         for (int index = 0; index < list.size() && worldLifecycleManager$rules.size() < SchematicannonSubstitutions.MAX_RULES; index++) {
             CompoundTag row = list.getCompound(index);
@@ -41,6 +43,7 @@ public abstract class SchematicannonBlockEntityMixin implements SchematicannonSu
             ResourceLocation target = ResourceLocation.tryParse(row.getString("Target"));
             if (source == null || target == null || source.equals(target)) continue;
             worldLifecycleManager$rules.put(source, target);
+            if(row.hasUUID("Author"))worldLifecycleManager$authors.put(source,row.getUUID("Author"));
         }
     }
 
@@ -51,11 +54,26 @@ public abstract class SchematicannonBlockEntityMixin implements SchematicannonSu
             CompoundTag row = new CompoundTag();
             row.putString("Source", source.toString());
             row.putString("Target", target.toString());
+            if(worldLifecycleManager$authors.containsKey(source))row.putUUID("Author",worldLifecycleManager$authors.get(source));
             list.add(row);
         });
         tag.put(WORLD_LIFECYCLE_MANAGER_RULES, list);
     }
 
+    @Inject(method="tickPrinter",at=@At("HEAD"))
+    private void worldLifecycleManager$beginPrint(CallbackInfo ci){worldLifecycleManager$pendingSource=null;worldLifecycleManager$pendingTarget=null;}
+    @Inject(method="launchBlock",at=@At("RETURN"))
+    private void worldLifecycleManager$launched(net.minecraft.core.BlockPos position,net.minecraft.world.item.ItemStack material,BlockState state,CompoundTag blockData,CallbackInfo ci){
+        SchematicannonBlockEntity cannon=(SchematicannonBlockEntity)(Object)this;
+        if(worldLifecycleManager$pendingSource==null||!worldLifecycleManager$authors.containsKey(worldLifecycleManager$pendingSource)||cannon.flyingBlocks.isEmpty())return;
+        if(!BuiltInRegistries.BLOCK.getKey(state.getBlock()).equals(worldLifecycleManager$pendingTarget))return;
+        var flight=cannon.flyingBlocks.get(cannon.flyingBlocks.size()-1);
+        if(!flight.target.equals(position))return;
+        var provenance=new CompoundTag();provenance.putUUID("owner",worldLifecycleManager$authors.get(worldLifecycleManager$pendingSource));provenance.putUUID("operation",java.util.UUID.randomUUID());
+        provenance.putString("source",worldLifecycleManager$pendingSource.toString());provenance.putString("target",worldLifecycleManager$pendingTarget.toString());
+        ((com.bettercontent.worldlifecyclemanager.SchematicSubstitutionFlight)flight).worldLifecycleManager$provenance(provenance);
+        worldLifecycleManager$pendingSource=null;worldLifecycleManager$pendingTarget=null;
+    }
     @Redirect(method = "tickPrinter", at = @At(value = "INVOKE",
             target = "Lcom/simibubi/create/content/schematics/SchematicPrinter;getCurrentRequirement()Lcom/simibubi/create/content/schematics/requirement/ItemRequirement;"))
     private ItemRequirement worldLifecycleManager$resolveRequirement(SchematicPrinter printer) {
@@ -78,6 +96,7 @@ public abstract class SchematicannonBlockEntityMixin implements SchematicannonSu
         int reservedForNativeBlocks = SchematicannonSubstitutions.nativeRequirement(cannon, replacementStack.stack.getItem());
         if (SchematicannonSubstitutions.availableCount(cannon, replacementStack)
                 < reservedForNativeBlocks + replacementStack.stack.getCount()) return original;
+        worldLifecycleManager$pendingSource=sourceId;worldLifecycleManager$pendingTarget=targetId;
         ((SchematicPrinterAccess) printer).worldLifecycleManager$replaceCurrentState(replacement);
         return printer.getCurrentRequirement();
     }
@@ -91,16 +110,20 @@ public abstract class SchematicannonBlockEntityMixin implements SchematicannonSu
         if (!worldLifecycleManager$rules.containsKey(source) && worldLifecycleManager$rules.size() >= SchematicannonSubstitutions.MAX_RULES) {
             throw new IllegalStateException("schematicannon substitution rule limit reached");
         }
+        worldLifecycleManager$authors.remove(source);
         worldLifecycleManager$rules.put(source, target);
         worldLifecycleManager$changed();
     }
 
+    @Override public void worldLifecycleManager$author(ResourceLocation source,java.util.UUID owner){if(worldLifecycleManager$rules.containsKey(source)){worldLifecycleManager$authors.put(source,owner);((SchematicannonBlockEntity)(Object)this).setChanged();}}
+    @Override public java.util.UUID worldLifecycleManager$author(ResourceLocation source){return worldLifecycleManager$authors.get(source);}
     @Override public void worldLifecycleManager$clearSubstitution(ResourceLocation source) {
+        worldLifecycleManager$authors.remove(source);
         if (worldLifecycleManager$rules.remove(source) != null) worldLifecycleManager$changed();
     }
 
     @Override public void worldLifecycleManager$clearSubstitutions() {
-        if (!worldLifecycleManager$rules.isEmpty()) { worldLifecycleManager$rules.clear(); worldLifecycleManager$changed(); }
+        if (!worldLifecycleManager$rules.isEmpty()) { worldLifecycleManager$authors.clear(); worldLifecycleManager$rules.clear(); worldLifecycleManager$changed(); }
     }
 
     @Unique private void worldLifecycleManager$changed() {

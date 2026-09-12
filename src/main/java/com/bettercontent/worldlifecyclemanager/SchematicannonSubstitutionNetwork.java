@@ -96,6 +96,7 @@ public final class SchematicannonSubstitutionNetwork {
                 else if (packet.kind == EditKind.SET && packet.source != null && packet.target != null
                         && isCurrentSource(cannon, packet.source) && carriedTarget(player, packet.target)) {
                     access.worldLifecycleManager$setSubstitution(packet.source, packet.target);
+                    access.worldLifecycleManager$author(packet.source,player.getUUID());
                 }
             } catch (IllegalArgumentException | IllegalStateException error) {
                 PrestigeMod.LOGGER.warn("Rejected Schematicannon substitution edit from {}: {}", player.getScoreboardName(), error.getMessage());
