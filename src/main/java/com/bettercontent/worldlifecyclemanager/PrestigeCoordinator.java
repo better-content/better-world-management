@@ -31,9 +31,12 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 public final class PrestigeCoordinator {
+    static final List<String> SAFE_TEMPERATE_DEFAULT_BIOMES = List.of(
+            "minecraft:plains", "minecraft:forest", "minecraft:birch_forest", "minecraft:taiga", "minecraft:meadow");
     private static int stopCountdown = -1;
     private static int shutdownPoll = 0;
     private static LandingSearchJob landingSearch;
@@ -339,7 +342,9 @@ public final class PrestigeCoordinator {
         if (!Files.isRegularFile(server.getWorldPath(LevelResource.LEVEL_DATA_FILE))) {
             throw new IllegalStateException("successor level.dat is missing");
         }
-        String resolvedBiome = foundExact ? confirmed.resolvedBiome() : "-";
+        // Empty first generation requests use the safe temperate search set, but
+        // retain the legacy contract's '-' resolved preference marker.
+        String resolvedBiome = foundExact && !successor.biomes().isEmpty() ? confirmed.resolvedBiome() : "-";
         PrestigeContracts.writeHealth(PrestigeService.control(server).resolve("health-result-v5.tsv"), successor,
                 level.getSeed(), resolvedBiome, actualBiome, PrestigeService.worldName(server), fresh, foundExact);
         PrestigePerks.writeHealth(server, successor, perks, resolvedBiome, spawn);
@@ -418,7 +423,9 @@ public final class PrestigeCoordinator {
             this.perks = perks;
             this.requestPath = requestPath;
             BlockPos origin = level.getSharedSpawnPos();
-            this.search = new IncrementalLandingSearch(successor.biomes(), origin.getX(), origin.getZ(),
+            List<String> preferences = successor.biomes().isEmpty()
+                    ? SAFE_TEMPERATE_DEFAULT_BIOMES : successor.biomes();
+            this.search = new IncrementalLandingSearch(preferences, origin.getX(), origin.getZ(),
                     SEARCH_STEP_BLOCKS, SEARCH_RADIUS_BLOCKS, MAX_TOTAL_TICKS);
         }
 

@@ -82,6 +82,12 @@ class PrestigeContractsTest {
         assertFalse(PrestigeCoordinator.selectedBiomeMatchesFinalFeet("minecraft:plains", "minecraft:forest"));
     }
 
+    @Test void firstGenerationUsesSafeTemperateDefaults() {
+        assertTrue(PrestigeCoordinator.SAFE_TEMPERATE_DEFAULT_BIOMES.contains("minecraft:plains"));
+        assertTrue(PrestigeCoordinator.SAFE_TEMPERATE_DEFAULT_BIOMES.contains("minecraft:forest"));
+        assertFalse(PrestigeCoordinator.SAFE_TEMPERATE_DEFAULT_BIOMES.contains("minecraft:deep_dark"));
+    }
+
     @Test void oldContractMagicIsRejected() throws Exception {
         Path old = temp.resolve("old-v4.tsv");
         Files.writeString(old, "BC_PRESTIGE_LINEAGE_V4\nlineage\tlineage-abc\ntotal_prestiges\t0\ngeneration\t0\n");
