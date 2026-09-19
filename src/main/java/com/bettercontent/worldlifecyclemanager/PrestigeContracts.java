@@ -27,6 +27,7 @@ public final class PrestigeContracts {
     public static final String WORLD_BINDING_MAGIC = "BC_PRESTIGE_WORLD_BINDING_V5";
     public static final String ACTIVE_SUCCESSOR_MAGIC = "BC_PRESTIGE_ACTIVE_SUCCESSOR_V2";
     public static final String SINGLEPLAYER_BINDING_MAGIC = "BC_SP_LINEAGE_BINDING_V1";
+    public static final String CANDIDATE_INHABITED_MAGIC = "BC_PRESTIGE_SUCCESSOR_CANDIDATE_INHABITED_V1";
 
     private static final Pattern ID = Pattern.compile("[a-z0-9][a-z0-9_-]{0,63}");
     private static final Pattern WORLD = Pattern.compile("[A-Za-z0-9._-]{1,128}");
@@ -55,6 +56,7 @@ public final class PrestigeContracts {
     }
     public record ActiveSuccessor(long pid, long startTicks, String lineageId, String transactionId, int attempt) {}
     public record SingleplayerBinding(String lineageId, long generation) {}
+    public record CandidateInhabited(String lineageId, String transactionId, int attempt) {}
 
     public static String newLineageId() {
         return "lineage-" + UUID.randomUUID().toString().replace("-", "");
@@ -266,6 +268,26 @@ public final class PrestigeContracts {
         if (binding.generation() < 0) throw new IllegalArgumentException("generation is negative");
         writeAtomic(path, List.of(SINGLEPLAYER_BINDING_MAGIC,
                 "lineage\t" + binding.lineageId(), "generation\t" + binding.generation()));
+    }
+
+    public static void writeCandidateInhabited(Path path, CandidateInhabited marker) throws IOException {
+        validateId("lineage ID", marker.lineageId());
+        validateId("transaction ID", marker.transactionId());
+        if (marker.attempt() < 1 || marker.attempt() > 8) throw new IllegalArgumentException("candidate attempt is outside 1..8");
+        writeAtomic(path, List.of(CANDIDATE_INHABITED_MAGIC,
+                "lineage\t" + marker.lineageId(), "transaction\t" + marker.transactionId(),
+                "attempt\t" + marker.attempt()));
+    }
+
+    public static CandidateInhabited readCandidateInhabited(Path path) throws IOException {
+        Map<String, String> fields = read(path, CANDIDATE_INHABITED_MAGIC, List.of("lineage", "transaction", "attempt"));
+        String lineage = fields.get("lineage");
+        String transaction = fields.get("transaction");
+        validateId("lineage ID", lineage);
+        validateId("transaction ID", transaction);
+        long attempt = parseLong("candidate attempt", fields.get("attempt"));
+        if (attempt < 1 || attempt > 8) throw new IllegalArgumentException("candidate attempt is outside 1..8");
+        return new CandidateInhabited(lineage, transaction, (int) attempt);
     }
 
     public static void writeHealth(Path path, Successor successor, long actualSeed, String resolvedBiome, String actualBiome,

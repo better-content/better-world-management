@@ -19,6 +19,11 @@ class PrestigeContractsTest {
         Path singleplayerPath = temp.resolve("singleplayer-lineage-v1.tsv");
         PrestigeContracts.writeSingleplayerBinding(singleplayerPath, singleplayer);
         assertEquals(singleplayer, PrestigeContracts.readSingleplayerBinding(singleplayerPath));
+        Path inhabited = temp.resolve("world/data/world_lifecycle_manager/successor-candidate-inhabited-v1.tsv");
+        var candidate = new PrestigeContracts.CandidateInhabited("lineage-abc", "transaction-abc", 2);
+        PrestigeContracts.writeCandidateInhabited(inhabited, candidate);
+        assertEquals(candidate, PrestigeContracts.readCandidateInhabited(inhabited));
+        assertEquals(inhabited, PrestigeCoordinator.successorCandidateInhabitedMarker(temp.resolve("world")));
         var staged = new PrestigeContracts.Staged("lineage-abc", 3,
                 List.of("minecraft:plains", "minecraft:forest", "minecraft:meadow"), "Builder", "world");
         Path stagedPath = temp.resolve("control/staged-request-v5.tsv");
@@ -65,6 +70,16 @@ class PrestigeContractsTest {
                 "minecraft:forest", "minecraft:plains", "world", true, true));
         assertDoesNotThrow(() -> PrestigeContracts.writeHealth(temp.resolve("miss.tsv"), successor, 7,
                 "-", "minecraft:plains", "world", true, false));
+    }
+
+    @Test void successorPublicationRequiresAnUninhabitedCandidateAndFinalFeetMatch() {
+        assertTrue(PrestigeCoordinator.isUnpublishedCandidate(true, true, true, 0));
+        assertFalse(PrestigeCoordinator.isUnpublishedCandidate(false, true, true, 0));
+        assertFalse(PrestigeCoordinator.isUnpublishedCandidate(true, false, true, 0));
+        assertFalse(PrestigeCoordinator.isUnpublishedCandidate(true, true, false, 0));
+        assertFalse(PrestigeCoordinator.isUnpublishedCandidate(true, true, true, 1));
+        assertTrue(PrestigeCoordinator.selectedBiomeMatchesFinalFeet("minecraft:plains", "minecraft:plains"));
+        assertFalse(PrestigeCoordinator.selectedBiomeMatchesFinalFeet("minecraft:plains", "minecraft:forest"));
     }
 
     @Test void oldContractMagicIsRejected() throws Exception {

@@ -44,7 +44,10 @@ public final class PrestigeCoordinator {
 
     @SubscribeEvent public static void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player
-                && PrestigeService.supportsPrestigeReset(player.server)) PrestigeNetwork.sendManifest(player);
+                && PrestigeService.supportsPrestigeReset(player.server)) {
+            markSuccessorCandidateInhabited(player.server);
+            PrestigeNetwork.sendManifest(player);
+        }
     }
     @SubscribeEvent public static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) PrestigeNetwork.cancelSync(player);
@@ -317,24 +320,69 @@ public final class PrestigeCoordinator {
     private static void publishSuccessorHealth(MinecraftServer server, ServerLevel level,
                                                PrestigeContracts.Successor successor, PrestigePerks.Build perks,
                                                LandingResult landing) throws java.io.IOException {
-        boolean foundExact = landing != null;
-        BlockPos spawn = foundExact ? landing.pos() : level.getSharedSpawnPos();
-        if (foundExact) configureSuccessorSpawn(server, level, spawn);
-        String actualBiome = level.getBiome(spawn).unwrapKey()
-                .map(key -> key.location().toString()).orElse("minecraft:the_void");
-        boolean fresh = freshDirectory(server.getWorldPath(LevelResource.PLAYER_DATA_DIR))
-                && freshDirectory(server.getWorldPath(LevelResource.PLAYER_ADVANCEMENTS_DIR))
-                && freshDirectory(server.getWorldPath(LevelResource.PLAYER_STATS_DIR))
-                && server.getPlayerCount() == 0 && foundExact;
+        boolean unpublished = isUnpublishedCandidate(
+                freshDirectory(server.getWorldPath(LevelResource.PLAYER_DATA_DIR)),
+                freshDirectory(server.getWorldPath(LevelResource.PLAYER_ADVANCEMENTS_DIR)),
+                freshDirectory(server.getWorldPath(LevelResource.PLAYER_STATS_DIR)), server.getPlayerCount());
+        LandingResult confirmed = null;
+        if (landing != null && unpublished && selectedBiomeMatches(level, landing.pos(), landing.resolvedBiome())) {
+            configureSuccessorSpawn(server, level, landing.pos());
+            BlockPos finalFeet = level.getSharedSpawnPos();
+            if (finalFeet.equals(landing.pos()) && selectedBiomeMatches(level, finalFeet, landing.resolvedBiome())) {
+                confirmed = new LandingResult(finalFeet, landing.resolvedBiome());
+            }
+        }
+        boolean foundExact = confirmed != null;
+        BlockPos spawn = foundExact ? confirmed.pos() : level.getSharedSpawnPos();
+        String actualBiome = biomeId(level, spawn);
+        boolean fresh = unpublished && foundExact;
         if (!Files.isRegularFile(server.getWorldPath(LevelResource.LEVEL_DATA_FILE))) {
             throw new IllegalStateException("successor level.dat is missing");
         }
-        String resolvedBiome = foundExact ? landing.resolvedBiome() : "-";
+        String resolvedBiome = foundExact ? confirmed.resolvedBiome() : "-";
         PrestigeContracts.writeHealth(PrestigeService.control(server).resolve("health-result-v5.tsv"), successor,
                 level.getSeed(), resolvedBiome, actualBiome, PrestigeService.worldName(server), fresh, foundExact);
         PrestigePerks.writeHealth(server, successor, perks, resolvedBiome, spawn);
         server.sendSystemMessage(Component.literal("Prestige successor health published for " + successor.transactionId()
                 + " biome=" + actualBiome));
+    }
+
+    static boolean isUnpublishedCandidate(boolean playerDataEmpty, boolean advancementsEmpty,
+                                          boolean statsEmpty, int onlinePlayers) {
+        return playerDataEmpty && advancementsEmpty && statsEmpty && onlinePlayers == 0;
+    }
+
+    static Path successorCandidateInhabitedMarker(Path worldRoot) {
+        return worldRoot.resolve("data/world_lifecycle_manager/successor-candidate-inhabited-v1.tsv");
+    }
+
+    private static void markSuccessorCandidateInhabited(MinecraftServer server) {
+        Path requestPath = PrestigeService.control(server).resolve("successor-request-v5.tsv");
+        if (!Files.isRegularFile(requestPath)) return;
+        try {
+            PrestigeContracts.Successor successor = PrestigeContracts.readSuccessor(requestPath);
+            PrestigeContracts.Lineage lineage = PrestigeService.lineage(server);
+            if (!successor.lineageId().equals(lineage.lineageId())
+                    || successor.baseGeneration() != lineage.generation()
+                    || successor.targetGeneration() != lineage.generation() + 1) return;
+            PrestigeContracts.writeCandidateInhabited(
+                    successorCandidateInhabitedMarker(server.getWorldPath(LevelResource.ROOT)),
+                    new PrestigeContracts.CandidateInhabited(successor.lineageId(), successor.transactionId(), successor.attempt()));
+        } catch (Exception error) {
+            PrestigeMod.LOGGER.error("Could not record successor candidate habitation", error);
+        }
+    }
+
+    static boolean selectedBiomeMatchesFinalFeet(String selectedBiome, String actualBiome) {
+        return selectedBiome != null && selectedBiome.equals(actualBiome);
+    }
+
+    private static boolean selectedBiomeMatches(ServerLevel level, BlockPos feet, String selectedBiome) {
+        return selectedBiomeMatchesFinalFeet(selectedBiome, biomeId(level, feet));
+    }
+
+    private static String biomeId(ServerLevel level, BlockPos feet) {
+        return level.getBiome(feet).unwrapKey().map(key -> key.location().toString()).orElse("minecraft:the_void");
     }
 
     private static void cancelLandingSearch() {
