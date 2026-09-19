@@ -61,7 +61,24 @@ public abstract class SchematicannonBlockEntityMixin implements SchematicannonSu
     }
 
     @Inject(method="tickPrinter",at=@At("HEAD"))
-    private void worldLifecycleManager$beginPrint(CallbackInfo ci){worldLifecycleManager$pendingSource=null;worldLifecycleManager$pendingTarget=null;}
+    private void worldLifecycleManager$beginPrint(CallbackInfo ci){
+        worldLifecycleManager$pendingSource=null;worldLifecycleManager$pendingTarget=null;
+        // Attached inventories can change without a rule edit. Rebuild the native
+        // checklist before readiness and substitution decisions are presented.
+        SchematicannonBlockEntity cannon=(SchematicannonBlockEntity)(Object)this;
+        cannon.findInventories();
+        cannon.updateChecklist();
+    }
+    @Inject(method="launchBlock",at=@At("HEAD"), cancellable=true)
+    private void worldLifecycleManager$revalidateStock(net.minecraft.core.BlockPos position,
+            net.minecraft.world.item.ItemStack material,BlockState state,CompoundTag blockData,CallbackInfo ci){
+        if(worldLifecycleManager$pendingSource==null||!state.getBlock().builtInRegistryHolder().key().location().equals(worldLifecycleManager$pendingTarget))return;
+        SchematicannonBlockEntity cannon=(SchematicannonBlockEntity)(Object)this;
+        ItemRequirement.StackRequirement replacement=SchematicannonSubstitutions.simpleRequirement(ItemRequirement.of(state,null));
+        if(replacement==null) { ci.cancel(); return; }
+        int reserved=SchematicannonSubstitutions.nativeRequirement(cannon,replacement.stack.getItem());
+        if(SchematicannonSubstitutions.availableCount(cannon,replacement)<reserved+replacement.stack.getCount()) ci.cancel();
+    }
     @Inject(method="launchBlock",at=@At("RETURN"))
     private void worldLifecycleManager$launched(net.minecraft.core.BlockPos position,net.minecraft.world.item.ItemStack material,BlockState state,CompoundTag blockData,CallbackInfo ci){
         SchematicannonBlockEntity cannon=(SchematicannonBlockEntity)(Object)this;

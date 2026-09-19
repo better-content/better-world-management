@@ -68,4 +68,14 @@ final class SchematicannonSubstitutionsTest {
         assertEquals(0, coverage.get(second).available());
         assertEquals(0, coverage.get(second).covered());
     }
+
+    @Test void readinessAllocationReflectsInventoryMutation() {
+        ResourceLocation target = new ResourceLocation("minecraft", "cobblestone");
+        ResourceLocation source = new ResourceLocation("minecraft", "andesite");
+        var demand = List.of(new SchematicannonSubstitutions.FallbackDemand(source, target, 1));
+        assertEquals(1, SchematicannonSubstitutions.allocateFallbackCoverage(Map.of(target, 1), demand)
+                .get(source).covered());
+        assertEquals(0, SchematicannonSubstitutions.allocateFallbackCoverage(Map.of(target, 0), demand)
+                .get(source).covered());
+    }
 }
