@@ -24,6 +24,8 @@ public final class SchematicannonSubstitutions {
 
     public record Row(ResourceLocation source, int required, int available, ResourceLocation target,
                       int fallbackAvailable, int fallbackNeeded, int covered, int uncovered) {}
+    record FallbackDemand(ResourceLocation source, ResourceLocation target, int shortage) {}
+    record FallbackAllocation(int available, int covered) {}
 
     private SchematicannonSubstitutions() {}
 
@@ -87,7 +89,7 @@ public final class SchematicannonSubstitutions {
         cannon.checklist.required.forEach((item, count) -> required.put(item, count.intValue()));
         Map<Item, Integer> gathered = new LinkedHashMap<>();
         cannon.checklist.gathered.forEach((item, count) -> gathered.put(item, count.intValue()));
-        List<Row> rows = new ArrayList<>();
+        List<PendingRow> pending = new ArrayList<>();
         required.entrySet().stream().sorted(Comparator.comparing(entry -> BuiltInRegistries.ITEM.getKey(entry.getKey()).toString()))
                 .limit(MAX_ROWS).forEach(entry -> {
                     if (!(entry.getKey() instanceof BlockItem sourceItem)) return;
@@ -98,18 +100,46 @@ public final class SchematicannonSubstitutions {
                     int have = gathered.getOrDefault(entry.getKey(), 0);
                     int shortage = Math.max(0, need - have);
                     ResourceLocation target = substitutions.get(source);
-                    int fallbackAvailable = 0;
-                    if (target != null) {
-                        Block targetBlock = BuiltInRegistries.BLOCK.get(target);
-                        Item targetItem = targetBlock.asItem();
-                        int targetNativeNeed = required.getOrDefault(targetItem, 0);
-                        fallbackAvailable = Math.max(0, gathered.getOrDefault(targetItem, 0) - targetNativeNeed);
-                    }
-                    int covered = Math.min(shortage, fallbackAvailable);
-                    rows.add(new Row(source, need, have, target, fallbackAvailable, shortage, covered, shortage - covered));
+                    pending.add(new PendingRow(source, need, have, target, shortage));
                 });
+
+        Map<ResourceLocation, Integer> surplus = new LinkedHashMap<>();
+        for (PendingRow row : pending) {
+            if (row.target == null || surplus.containsKey(row.target)) continue;
+            Block targetBlock = BuiltInRegistries.BLOCK.get(row.target);
+            Item targetItem = targetBlock.asItem();
+            int targetNativeNeed = required.getOrDefault(targetItem, 0);
+            surplus.put(row.target, Math.max(0, gathered.getOrDefault(targetItem, 0) - targetNativeNeed));
+        }
+        List<FallbackDemand> demands = pending.stream().filter(row -> row.target != null)
+                .map(row -> new FallbackDemand(row.source, row.target, row.shortage)).toList();
+        Map<ResourceLocation, FallbackAllocation> allocated = allocateFallbackCoverage(surplus, demands);
+        List<Row> rows = new ArrayList<>();
+        for (PendingRow row : pending) {
+            FallbackAllocation allocation = allocated.get(row.source);
+            int fallbackAvailable = allocation == null ? 0 : allocation.available;
+            int covered = allocation == null ? 0 : allocation.covered;
+            rows.add(new Row(row.source, row.need, row.have, row.target, fallbackAvailable, row.shortage,
+                    covered, row.shortage - covered));
+        }
         return List.copyOf(rows);
     }
+
+    /** Allocates each target's native-reserved surplus once, in stable source-ID order. */
+    static Map<ResourceLocation, FallbackAllocation> allocateFallbackCoverage(Map<ResourceLocation, Integer> surplus,
+                                                                                List<FallbackDemand> demands) {
+        Map<ResourceLocation, Integer> remaining = new LinkedHashMap<>(surplus);
+        Map<ResourceLocation, FallbackAllocation> result = new LinkedHashMap<>();
+        demands.stream().sorted(Comparator.comparing(demand -> demand.source().toString())).forEach(demand -> {
+            int available = Math.max(0, remaining.getOrDefault(demand.target(), 0));
+            int covered = Math.min(Math.max(0, demand.shortage()), available);
+            remaining.put(demand.target(), available - covered);
+            result.put(demand.source(), new FallbackAllocation(available, covered));
+        });
+        return Map.copyOf(result);
+    }
+
+    private record PendingRow(ResourceLocation source, int need, int have, ResourceLocation target, int shortage) {}
 
     public static void validateRule(ResourceLocation sourceId, ResourceLocation targetId,
                                     Map<ResourceLocation, ResourceLocation> existing) {

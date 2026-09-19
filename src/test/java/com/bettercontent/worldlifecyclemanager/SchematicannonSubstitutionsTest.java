@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeAll;
 
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -52,5 +54,18 @@ final class SchematicannonSubstitutionsTest {
         existing.put(dirt, stone);
         assertThrows(IllegalArgumentException.class,
                 () -> SchematicannonSubstitutions.validateRule(stone, dirt, existing));
+    }
+
+    @Test void sharedFallbackSurplusIsAllocatedOnceAfterNativeReservation() {
+        ResourceLocation target = new ResourceLocation("minecraft", "cobblestone");
+        ResourceLocation first = new ResourceLocation("minecraft", "andesite");
+        ResourceLocation second = new ResourceLocation("minecraft", "diorite");
+        var coverage = SchematicannonSubstitutions.allocateFallbackCoverage(Map.of(target, 64), List.of(
+                new SchematicannonSubstitutions.FallbackDemand(second, target, 64),
+                new SchematicannonSubstitutions.FallbackDemand(first, target, 64)));
+        assertEquals(64, coverage.get(first).available());
+        assertEquals(64, coverage.get(first).covered());
+        assertEquals(0, coverage.get(second).available());
+        assertEquals(0, coverage.get(second).covered());
     }
 }
