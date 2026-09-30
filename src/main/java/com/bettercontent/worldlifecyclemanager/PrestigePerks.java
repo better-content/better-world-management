@@ -279,7 +279,6 @@ public final class PrestigePerks {
     }
 
     private static void requireEditable(ServerPlayer player) {
-        if (!player.hasPermissions(4)) throw new IllegalArgumentException("permission level 4 required");
         requireEditable(player.server);
     }
     private static void requireEditable(MinecraftServer server) {

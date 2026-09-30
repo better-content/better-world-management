@@ -19,12 +19,19 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DirectionProperty;
+import net.minecraft.core.particles.DustParticleOptions;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraft.world.phys.shapes.Shapes;
+import org.joml.Vector3f;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraftforge.network.NetworkHooks;
 import org.jetbrains.annotations.Nullable;
 
 public final class WorldCondenserInterfaceBlock extends BaseEntityBlock {
     public static final DirectionProperty FACING = BlockStateProperties.FACING;
+    private static final VoxelShape SHAPE = Shapes.or(box(1, 9, 1, 15, 16, 15), box(5, 0, 5, 11, 9, 11));
 
     public WorldCondenserInterfaceBlock(Properties properties) {
         super(properties);
@@ -36,13 +43,26 @@ public final class WorldCondenserInterfaceBlock extends BaseEntityBlock {
     }
 
     @Nullable @Override public BlockState getStateForPlacement(BlockPlaceContext context) {
+        if (!WorldCondenserAssembly.valid(context.getLevel(), context.getClickedPos())) return null;
         return defaultBlockState().setValue(FACING, context.getClickedFace());
     }
+
+    @Override public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos,
+                                         net.minecraft.world.phys.shapes.CollisionContext context) { return SHAPE; }
 
     @Override public RenderShape getRenderShape(BlockState state) { return RenderShape.MODEL; }
 
     @Nullable @Override public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
         return new WorldCondenserBlockEntity(pos, state);
+    }
+
+    @Override public void animateTick(BlockState state, Level level, BlockPos pos, RandomSource random) {
+        if (!(level.getBlockEntity(pos) instanceof WorldCondenserBlockEntity condenser) || !condenser.isPouring()) return;
+        level.addParticle(new DustParticleOptions(new Vector3f(0.38f, 0.72f, 0.58f), 0.85f),
+                pos.getX() + 0.5, pos.getY() - random.nextDouble() * 1.5, pos.getZ() + 0.5,
+                0, -0.045, 0);
+        if (random.nextInt(3) == 0) level.addParticle(ParticleTypes.PORTAL,
+                pos.getX() + 0.5, pos.getY() - 1.4, pos.getZ() + 0.5, 0, 0.02, 0);
     }
 
     static boolean hasOperatorPermission(int permissionLevel) { return permissionLevel >= 4; }
@@ -56,9 +76,8 @@ public final class WorldCondenserInterfaceBlock extends BaseEntityBlock {
                         "message.world_lifecycle_manager.condenser_dedicated_only"), true);
                 return InteractionResult.CONSUME;
             }
-            if (!serverPlayer.hasPermissions(4)) {
-                PrestigeMod.LOGGER.warn("World Condenser access denied for non-operator {} at {}", serverPlayer.getScoreboardName(), pos);
-                serverPlayer.displayClientMessage(Component.translatable("message.world_lifecycle_manager.condenser_operator_required"), true);
+            if (!WorldCondenserAssembly.valid(level, pos)) {
+                serverPlayer.displayClientMessage(Component.literal("Place the Condenser two blocks above an unbound Font, with open space between."), true);
                 return InteractionResult.CONSUME;
             }
             String episodeId=java.util.UUID.nameUUIDFromBytes((serverPlayer.getUUID()+":"+level.dimension().location()+":"+pos.asLong()).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();

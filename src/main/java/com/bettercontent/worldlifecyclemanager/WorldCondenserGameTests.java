@@ -48,7 +48,7 @@ public final class WorldCondenserGameTests {
     }
 
     @GameTest(templateNamespace = PrestigeMod.MOD_ID, template = "empty", timeoutTicks = 200)
-    public static void standaloneInterfaceRequiresNoStructureOrAttunement(final GameTestHelper helper) {
+    public static void condenserRequiresAnUnboundFontBase(final GameTestHelper helper) {
         BlockPos interfacePos = helper.absolutePos(new BlockPos(2, 2, 2));
         BlockState interfaceState = PrestigeRegistry.WORLD_CONDENSER_INTERFACE.get().defaultBlockState()
                 .setValue(WorldCondenserInterfaceBlock.FACING, Direction.NORTH);
@@ -57,9 +57,13 @@ public final class WorldCondenserGameTests {
             helper.fail("World Condenser interface did not create its block entity");
             return;
         }
+        if (WorldCondenserAssembly.valid(helper.getLevel(), interfacePos)) {
+            helper.fail("World Condenser accepted an assembly with no unbound Font below it");
+            return;
+        }
         CompoundTag saved = entity.saveWithFullMetadata();
         if (saved.contains("Attuned")) {
-            helper.fail("Standalone World Condenser retained obsolete attunement state");
+            helper.fail("World Condenser retained obsolete attunement state");
             return;
         }
         if (!WorldCondenserInterfaceBlock.hasOperatorPermission(4)

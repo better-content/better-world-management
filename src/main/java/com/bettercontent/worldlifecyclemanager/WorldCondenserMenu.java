@@ -42,6 +42,8 @@ public final class WorldCondenserMenu extends AbstractContainerMenu {
     @Override public boolean stillValid(Player player) {
         if (remote) return true;
         return isInOriginalDimension(player)
+                && player.level().getBlockEntity(pos) instanceof WorldCondenserBlockEntity
+                && WorldCondenserAssembly.valid(player.level(), pos)
                 && player.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= 64.0;
     }
 }

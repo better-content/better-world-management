@@ -285,7 +285,6 @@ public final class PrestigeService {
 
     public static void setBiomeSlot(ServerPlayer player, int slot, String value) throws IOException {
         requirePrestigeReset(player.server);
-        requireOperator(player);
         if (slot < 0 || slot > 2) throw new IllegalArgumentException("biome preference slot is outside 1..3");
         List<String> current = new java.util.ArrayList<>(PrestigePerks.draft(player.server).biomes());
         if (value.equals("clear")) {
@@ -303,9 +302,13 @@ public final class PrestigeService {
     }
 
     public static void stage(ServerPlayer player, BlockPos interfacePos) throws IOException {
-        requireOperator(player);
         requireCondenser(player, interfacePos);
         stage(player.server);
+        if (player.level().getBlockEntity(interfacePos) instanceof WorldCondenserBlockEntity condenser) {
+            condenser.setPouring(true);
+            player.level().playSound(null, interfacePos, net.minecraft.sounds.SoundEvents.BEACON_ACTIVATE,
+                    net.minecraft.sounds.SoundSource.BLOCKS, 0.8f, 1.2f);
+        }
     }
 
     public static void stage(MinecraftServer server) throws IOException {
@@ -330,6 +333,14 @@ public final class PrestigeService {
     public static void cancel(ServerPlayer player) throws IOException {
         requireOperator(player);
         cancel(player.server);
+    }
+
+    public static void cancel(ServerPlayer player, BlockPos interfacePos) throws IOException {
+        requireCondenser(player, interfacePos);
+        cancel(player.server);
+        if (player.level().getBlockEntity(interfacePos) instanceof WorldCondenserBlockEntity condenser) {
+            condenser.setPouring(false);
+        }
     }
 
     public static void cancel(MinecraftServer server) throws IOException {
@@ -394,8 +405,9 @@ public final class PrestigeService {
     }
 
     private static void requireCondenser(ServerPlayer player, BlockPos pos) {
-        if (!(player.level().getBlockEntity(pos) instanceof WorldCondenserBlockEntity)) {
-            throw new IllegalStateException("nearby World Condenser Interface required");
+        if (!(player.level().getBlockEntity(pos) instanceof WorldCondenserBlockEntity)
+                || !WorldCondenserAssembly.valid(player.level(), pos)) {
+            throw new IllegalStateException("a nearby Condenser above an unbound Font is required");
         }
     }
 

@@ -122,7 +122,7 @@ public final class WorldCondenserScreen extends AbstractContainerScreen<WorldCon
         for (int slot = 0; slot < 3; slot++) {
             String label = switch (slot) { case 0 -> "Primary"; case 1 -> "Secondary"; default -> "Tertiary"; };
             String selected = slot < state.selectedBiomes().size() ? state.selectedBiomes().get(slot) : "";
-            boolean enabled = state.operator() && state.status().equals("draft")
+            boolean enabled = !menu.remote() && state.status().equals("draft")
                     && (slot == 0 || state.selectedBiomes().size() >= slot);
             int buttonWidth = slot == 0 ? width : Math.max(1, width - 70);
             int selectedSlot = slot;
@@ -142,7 +142,7 @@ public final class WorldCondenserScreen extends AbstractContainerScreen<WorldCon
             }
             y += rowGap;
         }
-        if (state.operator()) {
+        {
             int actionWidth = Math.max(52, Math.min(88, (width - 12) / 4));
             Button stage = Button.builder(Component.literal("Stage reset"), button ->
                     PrestigeNetwork.sendAction(PrestigeNetwork.Action.STAGE, actionPos(), ""))
@@ -153,7 +153,7 @@ public final class WorldCondenserScreen extends AbstractContainerScreen<WorldCon
             Button cancel = Button.builder(Component.literal("Cancel stage"), button ->
                     PrestigeNetwork.sendAction(PrestigeNetwork.Action.CANCEL, actionPos(), ""))
                     .bounds(x + actionWidth + 6, y, actionWidth, 20).build();
-            cancel.active = state.status().equals("staged");
+            cancel.active = !menu.remote() && state.status().equals("staged");
             addRenderableWidget(cancel);
             y += rowGap;
             Button commit = Button.builder(Component.literal("COMMIT PERMANENT RESET"), button ->
@@ -161,10 +161,6 @@ public final class WorldCondenserScreen extends AbstractContainerScreen<WorldCon
                 .bounds(x, y, width, 20).build();
             commit.active = WorldCondenserAccess.canCommit(state.operator(), menu.remote(), state.status());
             addRenderableWidget(commit);
-        }
-        if (!state.operator()) {
-            addRenderableWidget(Button.builder(Component.literal("Open schematics"), button -> switchTab(1))
-                    .bounds(x, topPos + imageHeight - 28, width, 20).build());
         }
     }
 
@@ -231,7 +227,7 @@ public final class WorldCondenserScreen extends AbstractContainerScreen<WorldCon
                 PrestigeNetwork.sendAction(PrestigeNetwork.Action.TOGGLE_PERK, actionPos(), id))
                 .bounds(x, y, width, 30).build();
         button.setTooltip(Tooltip.create(Component.literal(perkDescription(id))));
-        button.active = state.operator() && state.status().equals("draft");
+        button.active = !menu.remote() && state.status().equals("draft");
         addRenderableWidget(button);
     }
 

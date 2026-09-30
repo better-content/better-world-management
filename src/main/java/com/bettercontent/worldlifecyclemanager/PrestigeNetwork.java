@@ -152,19 +152,22 @@ public final class PrestigeNetwork {
                     case REFRESH_RESET -> sendState(player, ViewKind.RESET, true);
                     case REFRESH_SCHEMATICS -> sendState(player, ViewKind.SCHEMATICS, true);
                     case REFRESH_PERKS -> sendState(player, ViewKind.PERKS, true);
-                    case SET_BIOME_1 -> PrestigeService.setBiomeSlot(player, 0, packet.value);
-                    case SET_BIOME_2 -> PrestigeService.setBiomeSlot(player, 1, packet.value);
-                    case SET_BIOME_3 -> PrestigeService.setBiomeSlot(player, 2, packet.value);
-                    case TOGGLE_PERK -> PrestigePerks.toggle(player, packet.value);
+                    case SET_BIOME_1 -> { requirePhysicalMenu(player, menu); PrestigeService.setBiomeSlot(player, 0, packet.value); }
+                    case SET_BIOME_2 -> { requirePhysicalMenu(player, menu); PrestigeService.setBiomeSlot(player, 1, packet.value); }
+                    case SET_BIOME_3 -> { requirePhysicalMenu(player, menu); PrestigeService.setBiomeSlot(player, 2, packet.value); }
+                    case TOGGLE_PERK -> { requirePhysicalMenu(player, menu); PrestigePerks.toggle(player, packet.value); }
                     case STAGE -> {
                         requirePhysicalMenu(player, menu);
                         PrestigeService.stage(player, packet.pos);
                     }
-                    case CANCEL -> PrestigeService.cancel(player);
+                    case CANCEL -> { requirePhysicalMenu(player, menu); PrestigeService.cancel(player, packet.pos); }
                     case COMMIT -> {
                         requirePhysicalMenu(player, menu);
                         if (!packet.value.isEmpty()) throw new IllegalArgumentException("commit does not accept a world name");
                         String tx = PrestigeService.commit(player, packet.pos);
+                        player.serverLevel().sendParticles(net.minecraft.core.particles.ParticleTypes.PORTAL,
+                                packet.pos.getX() + 0.5, packet.pos.getY() - 1.0, packet.pos.getZ() + 0.5,
+                                80, 0.5, 0.7, 0.5, 0.15);
                         player.server.getPlayerList().broadcastSystemMessage(Component.literal(
                                 "World Condenser committed " + tx + " by " + player.getGameProfile().getName()
                                         + "; all world and player state will be archived and reset."), false);
