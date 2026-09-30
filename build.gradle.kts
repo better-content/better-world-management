@@ -7,13 +7,13 @@ plugins {
 }
 
 mixin {
-    config("world_lifecycle_manager.mixins.json")
+    config("better_world_management.mixins.json")
 }
 
 group = property("mod_group_id") as String
 version = property("mod_version") as String
 
-base { archivesName.set("world-lifecycle-manager") }
+base { archivesName.set("better-world-management") }
 java { toolchain.languageVersion.set(JavaLanguageVersion.of(17)) }
 
 val visualHarness by sourceSets.creating {
@@ -48,7 +48,7 @@ minecraft {
             workingDirectory(project.file("run-visual-server"))
             arg("--nogui")
             mods {
-                create("world_lifecycle_manager_visual_harness") { source(visualHarness) }
+                create("better_world_management_visual_harness") { source(visualHarness) }
             }
         }
         create("visualClient") {
@@ -56,7 +56,7 @@ minecraft {
             workingDirectory(project.file("run-visual-client"))
             args("--quickPlayMultiplayer", "127.0.0.1:25565", "--width", "1280", "--height", "720")
             mods {
-                create("world_lifecycle_manager_visual_harness") { source(visualHarness) }
+                create("better_world_management_visual_harness") { source(visualHarness) }
             }
         }
     }

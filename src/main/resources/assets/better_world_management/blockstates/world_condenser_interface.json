@@ -1,0 +1,5 @@
+{
+  "multipart": [
+    { "apply": { "model": "better_world_management:block/world_condenser_interface" } }
+  ]
+}

@@ -1,4 +1,4 @@
 {
   "replace": false,
-  "values": ["world_lifecycle_manager:world_condenser_interface"]
+  "values": ["better_world_management:world_condenser_interface"]
 }

@@ -5,4 +5,4 @@ pluginManagement {
         mavenCentral()
     }
 }
-rootProject.name = "world-lifecycle-manager"
+rootProject.name = "better-world-management"

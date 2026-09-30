@@ -1,4 +1,4 @@
-# World Lifecycle Manager
+# Better World Management
 
 World Lifecycle Manager is the Better Content Forge 1.20.1 mod for verified dedicated-server world resets, cold archives, rollback, World Condenser control, and the persistent lineage schematic library.
 
@@ -26,11 +26,11 @@ Java 17 is required. The checked-in Gradle wrapper provides the supported build 
 ./gradlew verifyFull stageRuntimeJar
 ```
 
-`verifyFast` runs the JVM tests. `verifyFull` also runs the Forge GameTests. `stageRuntimeJar` copies the reobfuscated production artifact to `build/libs/world-lifecycle-manager-0.1.0.jar`; deploy that canonical staged JAR.
+`verifyFast` runs the JVM tests. `verifyFull` also runs the Forge GameTests. `stageRuntimeJar` copies the reobfuscated production artifact to `build/libs/better-world-management-0.1.0.jar`; deploy that canonical staged JAR.
 
 The non-shipping `visualHarness` source set validates the real Create menu. Run the `visualServer` and `visualClient` configurations under Xvfb, then issue `wlmvisual prepare <player>` and `wlmvisual capture <player> <name>` through the dedicated-server console. The server commands create the fixture and open the menu; the client harness only waits for that screen and invokes Minecraft's screenshot API. It does not inject player movement, mouse, keyboard, or gameplay controls.
 
-The matching sibling pack repository is [better-content/better-content-modpack](https://github.com/better-content/better-content-modpack). Its `world-lifecycle-manager-server.sh` supervisor owns archive publication, successor health, retry, rollback, and exactly-once lineage advancement.
+The matching sibling pack repository is [better-content/better-content-modpack](https://github.com/better-content/better-content-modpack). Its `better-world-management-server.sh` supervisor owns archive publication, successor health, retry, rollback, and exactly-once lineage advancement.
 
 ## License
 
@@ -39,4 +39,4 @@ World Lifecycle Manager is licensed under the GNU Affero General Public License 
 
 ## Identity
 
-The clean-break canonical identity is repository/artifact `world-lifecycle-manager`, mod ID and resource namespace `world_lifecycle_manager`, and Maven group `com.bettercontent`. Legacy `prestige` identifiers and persisted paths are not migrated.
+The clean-break canonical identity is repository/artifact `better-world-management`, mod ID and resource namespace `better_world_management`, and Maven group `com.bettercontent`. Legacy `prestige` identifiers and persisted paths are not migrated.

@@ -1,0 +1,12 @@
+{
+  "block.better_world_management.world_condenser_interface": "World Condenser Interface",
+  "screen.better_world_management.world_condenser": "World Condenser",
+  "screen.better_world_management.substitutions": "Material Substitutions",
+  "screen.better_world_management.substitutions.empty": "Load a deployed schematic to evaluate its ordinary building blocks.",
+  "screen.better_world_management.fallback": "Fallback",
+  "screen.better_world_management.clear": "Clear",
+  "screen.better_world_management.clear_all": "All",
+  "screen.better_world_management.ghost_hint": "Carry a replacement block and click to assign it; click empty-handed to clear.",
+  "message.better_world_management.condenser_operator_required": "Only a server operator can commit a World Condenser reset.",
+  "message.better_world_management.condenser_dedicated_only": "Prestige is currently available only on a supervised dedicated server."
+}
