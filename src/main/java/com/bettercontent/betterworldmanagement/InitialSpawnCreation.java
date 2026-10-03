@@ -109,6 +109,7 @@ public final class InitialSpawnCreation {
                     int cursor = offset;
                     if (cursor < edge + 1) { gridX = -ring + cursor; gridZ = -ring; }
                     else if ((cursor -= edge + 1) < edge) { gridX = ring; gridZ = -ring + 1 + cursor; }
+                    else if ((cursor -= edge) < edge) { gridX = ring - 1 - cursor; gridZ = ring; }
                     else { cursor -= edge; gridX = -ring; gridZ = ring - 1 - cursor; }
                 }
                 int x = gridX * GRID_STEP;
