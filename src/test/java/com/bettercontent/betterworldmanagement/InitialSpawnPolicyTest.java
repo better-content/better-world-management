@@ -8,15 +8,18 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 final class InitialSpawnPolicyTest {
-    @Test void onlyFreshGenerationZeroWorldsStartTheInitialSearch() {
-        assertTrue(PrestigeCoordinator.shouldStartInitialSpawnSearch(false, null, true, 0));
-        assertFalse(PrestigeCoordinator.shouldStartInitialSpawnSearch(false, null, false, 0));
-        assertFalse(PrestigeCoordinator.shouldStartInitialSpawnSearch(false, null, true, 1));
-        assertFalse(PrestigeCoordinator.shouldStartInitialSpawnSearch(true, null, true, 0));
-    }
-
-    @Test void pendingSearchResumesAfterWorldBecomesInhabited() {
-        assertTrue(PrestigeCoordinator.shouldStartInitialSpawnSearch(true, "pending", false, 0));
+    @Test void aMissingSiteRetriesWithADistinctSeed() {
+        long[] now = {100L};
+        long[] seeds = {5L, 7L, 7L, 9L};
+        int[] next = {0};
+        var result = InitialSpawnSeedSearch.run(5L, () -> now[0], () -> seeds[next[0]++],
+                (seed, deadline) -> {
+                    assertEquals(now[0] + InitialSpawnSeedSearch.PER_SEED_NANOS, deadline);
+                    return seed == 9L ? "plains" : null;
+                });
+        assertEquals(9L, result.seed());
+        assertEquals(3, result.attempts());
+        assertEquals("plains", result.value());
     }
 
     @Test void initialSpawnStatusHasSafeUnknownFallback() {

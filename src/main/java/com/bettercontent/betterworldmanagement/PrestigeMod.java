@@ -32,6 +32,7 @@ public final class PrestigeMod {
             MinecraftForge.EVENT_BUS.register(SchematicannonSubstitutionClient.class);
         });
         MinecraftForge.EVENT_BUS.register(PrestigeCoordinator.class);
+        MinecraftForge.EVENT_BUS.register(InitialSpawnCreation.class);
     }
 
     private void onCreativeTab(BuildCreativeModeTabContentsEvent event) {

@@ -42,7 +42,6 @@ public final class PrestigeCoordinator {
     private static int stopCountdown = -1;
     private static int shutdownPoll = 0;
     private static LandingSearchJob landingSearch;
-    private static LandingSearchJob initialSpawnSearch;
     private static final String INITIAL_SPAWN_STATE = "data/better_world_management/initial-spawn-v1.tsv";
 
     private PrestigeCoordinator() {}
@@ -199,18 +198,11 @@ public final class PrestigeCoordinator {
     public static void onServerStarted(ServerStartedEvent event) {
         MinecraftServer server = event.getServer();
         cancelLandingSearch();
-        cancelInitialSpawnSearch();
         try {
             Path successorPath = PrestigeService.control(server).resolve("successor-request-v5.tsv");
-            if (!PrestigeService.supportsPrestigeReset(server)) {
-                startInitialSpawnSearch(server);
-                return;
-            }
+            if (!PrestigeService.supportsPrestigeReset(server)) return;
             PrestigeNetwork.tickSync(server);
-            if (!Files.isRegularFile(successorPath)) {
-                startInitialSpawnSearch(server);
-                return;
-            }
+            if (!Files.isRegularFile(successorPath)) return;
             PrestigeContracts.Successor successor = PrestigeContracts.readSuccessor(successorPath);
             PrestigePerks.Build perks = PrestigePerks.reset(server, successor);
             if (successor.attempt() > perks.successorAttempts()) {
@@ -282,7 +274,6 @@ public final class PrestigeCoordinator {
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         MinecraftServer server = event.getServer();
-        tickInitialSpawnSearch(server);
         if (!PrestigeService.supportsPrestigeReset(server)) return;
         tickLandingSearch(server);
         if (stopCountdown >= 0 && --stopCountdown <= 0) {
@@ -311,7 +302,6 @@ public final class PrestigeCoordinator {
     @SubscribeEvent
     public static void onServerStopping(ServerStoppingEvent event) {
         if (landingSearch != null && landingSearch.server == event.getServer()) cancelLandingSearch();
-        if (initialSpawnSearch != null && initialSpawnSearch.server == event.getServer()) cancelInitialSpawnSearch();
     }
 
     private static void tickLandingSearch(MinecraftServer server) {
@@ -333,66 +323,7 @@ public final class PrestigeCoordinator {
         }
     }
 
-    private static void tickInitialSpawnSearch(MinecraftServer server) {
-        LandingSearchJob active = initialSpawnSearch;
-        if (active == null || active.server != server) return;
-        try {
-            LandingSearchJob.TickResult result = active.tick();
-            if (result.waiting()) return;
-            initialSpawnSearch = null;
-            if (result.landing() != null && selectedBiomeMatches(active.level, result.landing().pos(), result.landing().resolvedBiome())) {
-                configureSuccessorSpawn(server, active.level, result.landing().pos());
-                BlockPos finalFeet = active.level.getSharedSpawnPos();
-                if (finalFeet.equals(result.landing().pos()) && selectedBiomeMatches(active.level, finalFeet, result.landing().resolvedBiome())) {
-                    writeInitialSpawnStatus(server, "resolved");
-                    server.sendSystemMessage(Component.literal("Initial shared spawn selected in " + result.landing().resolvedBiome()));
-                    return;
-                }
-            }
-            writeInitialSpawnStatus(server, "fallback");
-            server.sendSystemMessage(Component.literal("Initial temperate spawn search found no safe site; retaining the vanilla shared spawn"));
-        } catch (Exception error) {
-            active.cancel();
-            initialSpawnSearch = null;
-            try {
-                writeInitialSpawnStatus(server, "fallback");
-            } catch (java.io.IOException writeError) {
-                error.addSuppressed(writeError);
-            }
-            server.sendSystemMessage(Component.literal("Initial temperate spawn search failed; retaining the vanilla shared spawn: " + error.getMessage()));
-        }
-    }
-
-    private static void startInitialSpawnSearch(MinecraftServer server) throws Exception {
-        initialSpawnSearch = null;
-        boolean stateFilePresent = Files.isRegularFile(initialSpawnStatePath(server));
-        String storedStatus = readInitialSpawnStatus(server);
-        if ("resolved".equals(storedStatus) || "fallback".equals(storedStatus)) return;
-
-        if (storedStatus == null) {
-            boolean fresh = isUnpublishedCandidate(
-                    freshDirectory(server.getWorldPath(LevelResource.PLAYER_DATA_DIR)),
-                    freshDirectory(server.getWorldPath(LevelResource.PLAYER_ADVANCEMENTS_DIR)),
-                    freshDirectory(server.getWorldPath(LevelResource.PLAYER_STATS_DIR)),
-                    server.getPlayerCount());
-            long generation = PrestigeService.lineage(server).generation();
-            if (!shouldStartInitialSpawnSearch(stateFilePresent, null, fresh, generation)) return;
-            writeInitialSpawnStatus(server, "pending");
-        }
-
-        List<String> preferences;
-        try {
-            preferences = initialSpawnPreferences(server);
-        } catch (Exception error) {
-            server.sendSystemMessage(Component.literal("Initial spawn biome config is invalid; using safe temperate defaults: " + error.getMessage()));
-            preferences = SAFE_TEMPERATE_DEFAULT_BIOMES;
-        }
-        ServerLevel level = server.overworld();
-        initialSpawnSearch = new LandingSearchJob(server, level, preferences, null, null, null);
-        server.sendSystemMessage(Component.literal("Initial temperate shared spawn search started"));
-    }
-
-    private static List<String> initialSpawnPreferences(MinecraftServer server) throws java.io.IOException {
+    static List<String> initialSpawnPreferences(MinecraftServer server) throws java.io.IOException {
         Path config = server.getServerDirectory().toPath().resolve("config/better_world_management-biomes.txt");
         if (!Files.isRegularFile(config)) return SAFE_TEMPERATE_DEFAULT_BIOMES;
         List<String> preferences = new ArrayList<>();
@@ -419,7 +350,7 @@ public final class PrestigeCoordinator {
         return List.of("pending", "resolved", "fallback").contains(value) ? value : null;
     }
 
-    private static void writeInitialSpawnStatus(MinecraftServer server, String status) throws java.io.IOException {
+    static void writeInitialSpawnStatus(MinecraftServer server, String status) throws java.io.IOException {
         Path path = initialSpawnStatePath(server);
         Files.createDirectories(path.getParent());
         Files.writeString(path, status + "\n");
@@ -441,12 +372,6 @@ public final class PrestigeCoordinator {
                 case "fallback" -> com.bettercontent.betterworldmanagement.api.InitialSpawnService.Status.FALLBACK;
                 default -> com.bettercontent.betterworldmanagement.api.InitialSpawnService.Status.NOT_APPLICABLE;
         };
-    }
-
-    static boolean shouldStartInitialSpawnSearch(boolean stateFilePresent, String storedStatus,
-                                                 boolean freshWorld, long generation) {
-        if ("pending".equals(storedStatus)) return true;
-        return !stateFilePresent && freshWorld && generation == 0;
     }
 
     private static void publishSuccessorHealth(MinecraftServer server, ServerLevel level,
@@ -522,11 +447,6 @@ public final class PrestigeCoordinator {
     private static void cancelLandingSearch() {
         if (landingSearch != null) landingSearch.cancel();
         landingSearch = null;
-    }
-
-    private static void cancelInitialSpawnSearch() {
-        if (initialSpawnSearch != null) initialSpawnSearch.cancel();
-        initialSpawnSearch = null;
     }
 
     private static final class LandingSearchJob {
