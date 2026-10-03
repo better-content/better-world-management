@@ -20,6 +20,7 @@ import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.event.server.ServerAboutToStartEvent;
 import net.minecraftforge.event.server.ServerStoppedEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.util.ObfuscationReflectionHelper;
 
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -80,8 +81,8 @@ public final class InitialSpawnCreation {
                         }
                         return sites;
                     });
-            ((InitialSpawnWorldOptionsAccess) data).betterWorldManagement$setWorldOptions(
-                    data.worldGenOptions().withSeed(java.util.OptionalLong.of(chosen.seed())));
+            ObfuscationReflectionHelper.setPrivateValue(PrimaryLevelData.class, data,
+                    data.worldGenOptions().withSeed(java.util.OptionalLong.of(chosen.seed())), "f_244409_");
             Selection selection = new Selection(chosen.seed(), chosen.value(), preferences, chosen.attempts());
             SELECTIONS.put(server, selection);
             PrestigeMod.LOGGER.info("Initial temperate spawn prepared seed={} attempts={} candidate_sites={}",
