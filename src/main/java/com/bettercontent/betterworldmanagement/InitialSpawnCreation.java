@@ -1,6 +1,7 @@
 package com.bettercontent.betterworldmanagement;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
 import net.minecraft.core.QuartPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -9,6 +10,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelHeightAccessor;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
@@ -39,7 +41,10 @@ public final class InitialSpawnCreation {
     private static final Map<MinecraftServer, Selection> SELECTIONS = new WeakHashMap<>();
 
     private record Site(BlockPos feet, String biome) {}
-    private record Selection(long seed, List<Site> sites, List<String> preferences, int attempts) {}
+    private record Selection(long seed, List<Site> sites, List<String> preferences, int attempts,
+                             boolean deferred) {}
+
+    static final class BiomeLookupUnavailable extends RuntimeException {}
 
     private InitialSpawnCreation() {}
 
@@ -70,20 +75,28 @@ public final class InitialSpawnCreation {
             NoiseGeneratorSettings settings = noiseGenerator.generatorSettings().value();
             LevelHeightAccessor height = LevelHeightAccessor.create(generator.getMinY(), generator.getGenDepth());
             long firstSeed = data.worldGenOptions().seed();
-            InitialSpawnSeedSearch.Result<List<Site>> chosen = InitialSpawnSeedSearch.run(
-                    firstSeed, System::nanoTime, () -> ThreadLocalRandom.current().nextLong(),
-                    (seed, deadline) -> {
-                        RandomState state = RandomState.create(settings, noiseRegistry, seed);
-                        List<Site> sites = search(generator, state, height, preferences, deadline);
-                        if (sites.isEmpty()) {
-                            PrestigeMod.LOGGER.info("Initial temperate spawn: no site on seed {} within 60s; trying another seed", seed);
-                            return null;
-                        }
-                        return sites;
-                    });
+            InitialSpawnSeedSearch.Result<List<Site>> chosen;
+            try {
+                chosen = InitialSpawnSeedSearch.run(
+                        firstSeed, System::nanoTime, () -> ThreadLocalRandom.current().nextLong(),
+                        (seed, deadline) -> {
+                            RandomState state = RandomState.create(settings, noiseRegistry, seed);
+                            List<Site> sites = search(generator, state, height, preferences, deadline);
+                            if (sites.isEmpty()) {
+                                PrestigeMod.LOGGER.info("Initial temperate spawn: no site on seed {} within 60s; trying another seed", seed);
+                                return null;
+                            }
+                            return sites;
+                        });
+            } catch (BiomeLookupUnavailable unavailable) {
+                SELECTIONS.put(server, new Selection(firstSeed, List.of(), preferences, 0, true));
+                PrestigeMod.LOGGER.warn("Initial temperate spawn: biome source returned null before level creation; "
+                        + "keeping seed {} and deferring site selection until generated terrain is available", firstSeed);
+                return;
+            }
             ObfuscationReflectionHelper.setPrivateValue(PrimaryLevelData.class, data,
                     data.worldGenOptions().withSeed(java.util.OptionalLong.of(chosen.seed())), "f_244409_");
-            Selection selection = new Selection(chosen.seed(), chosen.value(), preferences, chosen.attempts());
+            Selection selection = new Selection(chosen.seed(), chosen.value(), preferences, chosen.attempts(), false);
             SELECTIONS.put(server, selection);
             PrestigeMod.LOGGER.info("Initial temperate spawn prepared seed={} attempts={} candidate_sites={}",
                     selection.seed(), selection.attempts(), selection.sites().size());
@@ -115,18 +128,16 @@ public final class InitialSpawnCreation {
                 }
                 int x = gridX * GRID_STEP;
                 int z = gridZ * GRID_STEP;
-                String coarse = source.getNoiseBiome(QuartPos.fromBlock(x), seaQuart,
-                        QuartPos.fromBlock(z), state.sampler()).unwrapKey()
-                        .map(key -> key.location().toString()).orElse("");
+                String coarse = earlyBiomeId(source.getNoiseBiome(QuartPos.fromBlock(x), seaQuart,
+                        QuartPos.fromBlock(z), state.sampler()));
                 if (!allowed.contains(coarse)) continue;
                 int y = generator.getBaseHeight(x, z, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, height, state);
                 if (y <= height.getMinBuildHeight() + 1 || y >= height.getMaxBuildHeight() - 2) continue;
                 var column = generator.getBaseColumn(x, z, height, state);
                 if (!column.getBlock(y - 1).blocksMotion() || !column.getBlock(y - 1).getFluidState().isEmpty()
                         || !column.getBlock(y).isAir() || !column.getBlock(y + 1).isAir()) continue;
-                String feetBiome = source.getNoiseBiome(QuartPos.fromBlock(x), QuartPos.fromBlock(y),
-                        QuartPos.fromBlock(z), state.sampler()).unwrapKey()
-                        .map(key -> key.location().toString()).orElse("");
+                String feetBiome = earlyBiomeId(source.getNoiseBiome(QuartPos.fromBlock(x), QuartPos.fromBlock(y),
+                        QuartPos.fromBlock(z), state.sampler()));
                 if (!allowed.contains(feetBiome)) continue;
                 found.add(new Site(new BlockPos(x, y, z), feetBiome));
                 if (found.size() >= CANDIDATE_COUNT) return found;
@@ -135,12 +146,25 @@ public final class InitialSpawnCreation {
         return found;
     }
 
+    static String earlyBiomeId(Holder<Biome> biome) {
+        if (biome == null) throw new BiomeLookupUnavailable();
+        return biome.unwrapKey().map(key -> key.location().toString()).orElse("");
+    }
+
+    static String generatedBiomeId(Holder<Biome> biome, int x, int z) {
+        if (biome == null) {
+            throw new IllegalStateException("Overworld biome source still returned null after level creation "
+                    + "at block x=" + x + " z=" + z + "; cannot verify a safe temperate spawn");
+        }
+        return biome.unwrapKey().map(key -> key.location().toString()).orElse("");
+    }
+
     private static Site verifySite(ServerLevel level, Site site) {
         BlockPos probe = site.feet();
         var chunk = level.getChunk(probe.getX() >> 4, probe.getZ() >> 4);
         int y = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, probe.getX() & 15, probe.getZ() & 15) + 1;
         BlockPos feet = new BlockPos(probe.getX(), y, probe.getZ());
-        String actual = level.getBiome(feet).unwrapKey().map(key -> key.location().toString()).orElse("");
+        String actual = generatedBiomeId(level.getBiome(feet), feet.getX(), feet.getZ());
         if (!site.biome().equals(actual) || !level.getBlockState(feet.below()).blocksMotion()
                 || !level.getFluidState(feet.below()).isEmpty() || !level.getBlockState(feet).isAir()
                 || !level.getBlockState(feet.above()).isAir()) return null;
@@ -151,7 +175,7 @@ public final class InitialSpawnCreation {
         var chunk = level.getChunk(x >> 4, z >> 4);
         int y = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x & 15, z & 15) + 1;
         BlockPos feet = new BlockPos(x, y, z);
-        String actual = level.getBiome(feet).unwrapKey().map(key -> key.location().toString()).orElse("");
+        String actual = generatedBiomeId(level.getBiome(feet), x, z);
         if (!allowed.contains(actual) || !level.getBlockState(feet.below()).blocksMotion()
                 || !level.getFluidState(feet.below()).isEmpty() || !level.getBlockState(feet).isAir()
                 || !level.getBlockState(feet.above()).isAir()) return null;
@@ -183,9 +207,8 @@ public final class InitialSpawnCreation {
                 }
                 int x = gridX * GRID_STEP;
                 int z = gridZ * GRID_STEP;
-                String coarse = level.getUncachedNoiseBiome(QuartPos.fromBlock(x), seaQuart,
-                        QuartPos.fromBlock(z)).unwrapKey()
-                        .map(key -> key.location().toString()).orElse("");
+                String coarse = generatedBiomeId(level.getUncachedNoiseBiome(QuartPos.fromBlock(x), seaQuart,
+                        QuartPos.fromBlock(z)), x, z);
                 if (!allowed.contains(coarse)) continue;
                 Site confirmed = verifyAnyAllowedSite(level, x, z, allowed);
                 if (confirmed != null) return confirmed;
@@ -211,8 +234,8 @@ public final class InitialSpawnCreation {
         event.setCanceled(true);
         try { PrestigeCoordinator.writeInitialSpawnStatus(server, "resolved"); }
         catch (Exception error) { throw new IllegalStateException("Could not record initial temperate spawn", error); }
-        PrestigeMod.LOGGER.info("Initial shared spawn selected seed={} biome={} feet={} attempts={}",
-                selection.seed(), confirmed.biome(), confirmed.feet(), selection.attempts());
+        PrestigeMod.LOGGER.info("Initial shared spawn selected seed={} biome={} feet={} attempts={} deferred={}",
+                selection.seed(), confirmed.biome(), confirmed.feet(), selection.attempts(), selection.deferred());
     }
 
     @SubscribeEvent

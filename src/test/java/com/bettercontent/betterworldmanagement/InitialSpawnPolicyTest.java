@@ -36,4 +36,16 @@ final class InitialSpawnPolicyTest {
                 "minecraft:forest", "minecraft:flower_forest", "minecraft:birch_forest"),
                 PrestigeCoordinator.SAFE_TEMPERATE_DEFAULT_BIOMES);
     }
+
+    @Test void unavailableEarlyBiomeDefersSelectionInsteadOfDereferencingNull() {
+        assertThrows(InitialSpawnCreation.BiomeLookupUnavailable.class,
+                () -> InitialSpawnCreation.earlyBiomeId(null));
+    }
+
+    @Test void unavailableGeneratedBiomeReportsWhySpawnCannotBeVerified() {
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> InitialSpawnCreation.generatedBiomeId(null, 32, -64));
+        assertTrue(error.getMessage().contains("x=32 z=-64"));
+        assertTrue(error.getMessage().contains("cannot verify a safe temperate spawn"));
+    }
 }
