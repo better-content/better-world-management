@@ -1,5 +1,12 @@
 # Better World Management
 
+## Scope and authority
+
+This repository owns gameplay successor/archive persistence, not development artifact retention.
+Read [local instructions](AGENTS.md) and the
+[shared documentation/policy index](../../better-content-modpack/docs/README.md).
+
+
 World Lifecycle Manager is the Better Content Forge 1.20.1 mod for verified dedicated-server world resets, cold archives, rollback, World Condenser control, and the persistent lineage schematic library.
 
 Single-player worlds receive a durable lineage identity and namespaced player-lineage storage so a future successor can inherit collected history. Prestige resets, perks, lineage schematics, World Condenser operation, and lifecycle commands remain disabled on integrated servers; single-player onboarding uses the generation-zero spawn-only policy. Unrelated newly created saves receive distinct lineage identities, while copied saves retain their binding.
