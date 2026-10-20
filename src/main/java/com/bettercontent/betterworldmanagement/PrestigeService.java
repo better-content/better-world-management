@@ -281,6 +281,7 @@ public final class PrestigeService {
         PrestigePerks.setBiomes(server, biomes);
         PrestigeContracts.writeDraft(control(server).resolve("draft-v5.tsv"), new PrestigeContracts.Draft(
                 lineage.lineageId(), lineage.generation(), biomes, author, worldName(server)));
+        observed("prestige.draft", "written", "draft_published");
     }
 
     public static void setBiomeSlot(ServerPlayer player, int slot, String value) throws IOException {
@@ -328,6 +329,7 @@ public final class PrestigeService {
         PrestigePerks.stage(server, draft.biomes());
         PrestigeContracts.writeStaged(control(server).resolve("staged-request-v5.tsv"), new PrestigeContracts.Staged(
                 draft.lineageId(), draft.generation(), draft.biomes(), draft.author(), draft.worldName()));
+        observed("prestige.stage", "written", "staged_request_published");
     }
 
     public static void cancel(ServerPlayer player) throws IOException {
@@ -348,6 +350,7 @@ public final class PrestigeService {
         if (Files.exists(control(server).resolve("reset-request-v5.tsv"))) throw new IllegalStateException("committed reset cannot be cancelled in-game");
         Files.deleteIfExists(control(server).resolve("staged-request-v5.tsv"));
         PrestigePerks.cancel(server);
+        observed("prestige.stage", "cancelled", "uncommitted_request");
     }
 
     public static String commit(ServerPlayer player, BlockPos interfacePos) throws IOException {
@@ -378,12 +381,19 @@ public final class PrestigeService {
                 lineage.lineageId(), lineage.generation(), transaction, staged.worldName(), oldSeed, staged.biomes()));
         PrestigeContracts.writeReset(resetPath, new PrestigeContracts.Reset(lineage.lineageId(), lineage.generation(),
                 transaction, staged.worldName(), oldSeed, staged.biomes()));
+        if (PlaytestDiagnostics.LOG.enabled("prestige")) PlaytestDiagnostics.LOG.event("prestige", "prestige.commit", "server",
+                "reset_request_written", "awaiting_normal_halt", () -> com.bettercontent.betterworldmanagement.diagnostics.PlaytestLog.fields(
+                    "transaction", transaction, "generation", lineage.generation()));
         // The scheduled clean halt performs Minecraft's normal player/world flush. Doing a second synchronous
         // save here can exceed the watchdog in a large pack; the supervisor cannot archive until that halt exits.
         PrestigeCoordinator.scheduleStop();
         Files.deleteIfExists(control(server).resolve("staged-request-v5.tsv"));
         Files.deleteIfExists(control(server).resolve("draft-v5.tsv"));
         return transaction;
+    }
+
+    private static void observed(String event, String result, String reason) {
+        if (PlaytestDiagnostics.LOG.enabled("prestige")) PlaytestDiagnostics.LOG.event("prestige", event, "server", result, reason, null);
     }
 
     public static SchematicLibrary.Entry publish(ServerPlayer player, String fileName, byte[] compressedNbt) throws IOException {

@@ -83,7 +83,8 @@ public final class InitialSpawnCreation {
                             RandomState state = RandomState.create(settings, noiseRegistry, seed);
                             List<Site> sites = search(generator, state, height, preferences, deadline);
                             if (sites.isEmpty()) {
-                                PrestigeMod.LOGGER.info("Initial temperate spawn: no site on seed {} within 60s; trying another seed", seed);
+                                if (PlaytestDiagnostics.LOG.enabled("initial_spawn")) PlaytestDiagnostics.LOG.event("initial_spawn",
+                                        "spawn.seed_search", "server", "retry", "no_site_within_budget", null);
                                 return null;
                             }
                             return sites;
@@ -91,15 +92,15 @@ public final class InitialSpawnCreation {
             } catch (BiomeLookupUnavailable unavailable) {
                 SELECTIONS.put(server, new Selection(firstSeed, List.of(), preferences, 0, true));
                 PrestigeMod.LOGGER.warn("Initial temperate spawn: biome source returned null before level creation; "
-                        + "keeping seed {} and deferring site selection until generated terrain is available", firstSeed);
+                        + "retaining current seed and deferring site selection until generated terrain is available");
                 return;
             }
             ObfuscationReflectionHelper.setPrivateValue(PrimaryLevelData.class, data,
                     data.worldGenOptions().withSeed(java.util.OptionalLong.of(chosen.seed())), "f_244409_");
             Selection selection = new Selection(chosen.seed(), chosen.value(), preferences, chosen.attempts(), false);
             SELECTIONS.put(server, selection);
-            PrestigeMod.LOGGER.info("Initial temperate spawn prepared seed={} attempts={} candidate_sites={}",
-                    selection.seed(), selection.attempts(), selection.sites().size());
+            PrestigeMod.LOGGER.info("Initial temperate spawn prepared attempts={} candidate_sites={}",
+                    selection.attempts(), selection.sites().size());
         } catch (Exception error) {
             throw new IllegalStateException("Could not prepare the initial temperate spawn before world creation", error);
         }
@@ -234,8 +235,8 @@ public final class InitialSpawnCreation {
         event.setCanceled(true);
         try { PrestigeCoordinator.writeInitialSpawnStatus(server, "resolved"); }
         catch (Exception error) { throw new IllegalStateException("Could not record initial temperate spawn", error); }
-        PrestigeMod.LOGGER.info("Initial shared spawn selected seed={} biome={} feet={} attempts={} deferred={}",
-                selection.seed(), confirmed.biome(), confirmed.feet(), selection.attempts(), selection.deferred());
+        PrestigeMod.LOGGER.info("Initial shared spawn selected biome={} attempts={} deferred={}",
+                confirmed.biome(), selection.attempts(), selection.deferred());
     }
 
     @SubscribeEvent

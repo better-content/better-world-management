@@ -1,5 +1,18 @@
 # Better World Management
 
+## Playtest logging
+
+`bc.playtest.better_world_management.prestige` distinguishes stop request admission, changed-request
+landing-search cancellation and actual health-result publication. Health records may contain the
+existing transaction identity and exact-landing/fresh flags, never seed, filesystem payload,
+operator names or schematics. A stop request is not archive completion, and published unresolved
+health is not an accepted successor. Real health-operation exceptions retain ERROR plus cause.
+DEBUG/TRACE share 120/minute (burst 20), 256 keys and 2,048-character records, with 30-second
+summaries. Startup INFO reports loaded version/mode/limits and dedicated-only reset scope;
+unavailable source identity is `UNKNOWN`. Stop/disconnect clears transient keys without rearming
+process allowances. Pure emitter/contracts supplement native lifecycle gates, not supervisor
+archive acceptance.
+
 ## Scope and authority
 
 This repository owns gameplay successor/archive persistence, not development artifact retention.
@@ -17,7 +30,7 @@ Operators publish lineage schematics directly from the World Condenser's Schemat
 
 The World Condenser also exposes a world-shaping perk tree. Each upcoming prestige supplies one point. Players may respec before staging, while the staged build is transactionally bound to the successor and only becomes active after verified lineage advancement.
 
-Fresh generation-zero worlds choose their initial shared spawn before the world accepts players. World creation searches outward through the configured safe temperate biomes for up to 60 seconds per seed. It tries the supplied seed first, then new random seeds until a candidate is found. Generated terrain and the final spawn-feet biome are checked before publishing the shared spawn; a rejected site never falls back to vanilla spawn. The chosen seed, biome, and position appear in the server log. Presets whose Overworld biome source cannot produce a configured biome use their normal spawn behavior. Existing worlds keep their shared spawn.
+Fresh generation-zero worlds choose their initial shared spawn before the world accepts players. World creation searches outward through the configured safe temperate biomes for up to 60 seconds per seed. It tries the supplied seed first, then new random seeds until a candidate is found. Generated terrain and the final spawn-feet biome are checked before publishing the shared spawn; a rejected site never falls back to vanilla spawn. The selected biome and search-attempt summary appear in the server log; ordinary production diagnostics omit the seed and exact position. Presets whose Overworld biome source cannot produce a configured biome use their normal spawn behavior. Existing worlds keep their shared spawn.
 
 Successor biome preferences are resolved in their configured order by the same bounded search. A changed request or stopping server cancels the successor cursor. Exhausting the search or reaching its 4,000-tick deadline retains the generated world's shared spawn and publishes an unresolved health result so the supervisor can safely retry or roll back.
 

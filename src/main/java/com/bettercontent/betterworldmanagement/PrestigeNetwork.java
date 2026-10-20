@@ -63,7 +63,7 @@ public final class PrestigeNetwork {
             List<ClientEntry> entries = SchematicLibrary.list(player.server).stream().map(entry -> new ClientEntry(
                     entry.id(), entry.author(), entry.originalName(), entry.size(), entry.sha256())).toList();
             CHANNEL.sendTo(new SyncManifestPacket(entries), player.connection.connection, NetworkDirection.PLAY_TO_CLIENT);
-        } catch (Exception error) { PrestigeMod.LOGGER.warn("Could not build schematic manifest for {}: {}", player.getScoreboardName(), error.getMessage()); }
+        } catch (Exception error) { PrestigeMod.LOGGER.warn("Could not build schematic manifest", error); }
     }
     public static void cancelSync(ServerPlayer player) { SYNC_QUEUES.remove(player.getUUID()); }
     public static void tickSync(net.minecraft.server.MinecraftServer server) {
@@ -82,7 +82,7 @@ public final class PrestigeNetwork {
                 byte[] data = SchematicLibrary.download(server, entry.id());
                 CHANNEL.sendTo(new DownloadPacket(entry.author(), entry.originalName(), entry.sha256(), data, true, ordinal, batch.total),
                         player.connection.connection, NetworkDirection.PLAY_TO_CLIENT);
-            } catch (Exception error) { PrestigeMod.LOGGER.warn("Automatic schematic sync failed for {}: {}", player.getScoreboardName(), error.getMessage()); }
+            } catch (Exception error) { PrestigeMod.LOGGER.warn("Automatic schematic sync failed", error); }
             if (batch.entries.isEmpty()) iterator.remove();
         }
     }
@@ -108,7 +108,7 @@ public final class PrestigeNetwork {
             send(player, packet);
         } catch (Exception error) {
             String message = safeError(error);
-            PrestigeMod.LOGGER.warn("World Condenser state failed for {}: {}", player.getScoreboardName(), message);
+            PrestigeMod.LOGGER.warn("World Condenser state operation failed", error);
             StatePacket packet = StatePacket.failure(pos, view, message, player.hasPermissions(4),
                     PrestigeService.diagnoseRecovery(player.server).action());
             STATE_CACHE.put(player, new CachedState(now, pos, view, packet));
@@ -190,12 +190,13 @@ public final class PrestigeNetwork {
                 }
                 if (packet.action != Action.REFRESH_RESET && packet.action != Action.REFRESH_SCHEMATICS
                         && packet.action != Action.REFRESH_PERKS) {
-                    PrestigeMod.LOGGER.info("World Condenser action succeeded actor={} action={} pos={}",
-                            player.getScoreboardName(), packet.action, packet.pos);
+                    if (PlaytestDiagnostics.LOG.enabled("condenser")) PlaytestDiagnostics.LOG.event("condenser", "condenser.action", "server",
+                            "applied", "native_action", () -> com.bettercontent.betterworldmanagement.diagnostics.PlaytestLog.fields("action", packet.action));
                 }
             } catch (Exception error) {
-                PrestigeMod.LOGGER.warn("World Condenser action failed actor={} action={} pos={}: {}",
-                        player.getScoreboardName(), packet.action, packet.pos, error.getMessage());
+                if (error instanceof java.io.IOException) PrestigeMod.LOGGER.warn("World Condenser action operation failed action={}", packet.action, error);
+                else if (PlaytestDiagnostics.LOG.enabled("condenser")) PlaytestDiagnostics.LOG.event("condenser", "condenser.action", "server",
+                        "rejected", "action_validation", () -> com.bettercontent.betterworldmanagement.diagnostics.PlaytestLog.fields("action", packet.action));
                 player.displayClientMessage(Component.literal("World Condenser refused: " + error.getMessage()), false);
             }
             switch (packet.action) {
@@ -248,13 +249,14 @@ public final class PrestigeNetwork {
             }
             try {
                 SchematicLibrary.Entry entry = PrestigeService.publish(player, packet.name, packet.compressedNbt);
-                PrestigeMod.LOGGER.info("World Condenser schematic publication succeeded actor={} name={} id={} pos={}",
-                        player.getScoreboardName(), entry.originalName(), entry.id(), packet.pos);
+                if (PlaytestDiagnostics.LOG.enabled("schematics")) PlaytestDiagnostics.LOG.event("schematics", "schematic.publish", "server",
+                        "published", "library_commit", null);
                 player.displayClientMessage(Component.literal("Published lineage schematic " + entry.originalName()), false);
             } catch (Exception error) {
                 String message = safeError(error);
-                PrestigeMod.LOGGER.warn("World Condenser schematic publication failed actor={} name={} pos={}: {}",
-                        player.getScoreboardName(), packet.name, packet.pos, message);
+                if (error instanceof java.io.IOException) PrestigeMod.LOGGER.warn("World Condenser schematic publication operation failed", error);
+                else if (PlaytestDiagnostics.LOG.enabled("schematics")) PlaytestDiagnostics.LOG.event("schematics", "schematic.publish", "server",
+                        "rejected", "publication_validation", null);
                 player.displayClientMessage(Component.literal("World Condenser refused: " + message), false);
             }
             sendState(player, ViewKind.SCHEMATICS, false);
@@ -349,7 +351,7 @@ public final class PrestigeNetwork {
             HashSet<String> requested = new HashSet<>(packet.ids);
             ArrayDeque<SchematicLibrary.Entry> queue = new ArrayDeque<>();
             try { SchematicLibrary.list(player.server).stream().filter(entry -> requested.contains(entry.id())).forEach(queue::add); }
-            catch (Exception error) { PrestigeMod.LOGGER.warn("Could not queue schematic sync for {}: {}", player.getScoreboardName(), error.getMessage()); return; }
+            catch (Exception error) { PrestigeMod.LOGGER.warn("Could not queue schematic sync", error); return; }
             if (!queue.isEmpty()) SYNC_QUEUES.put(player.getUUID(), new SyncBatch(queue));
         }
     }
