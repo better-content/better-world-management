@@ -16,6 +16,31 @@ import java.util.List;
 import net.minecraftforge.common.MinecraftForge;
 
 public final class PrestigeService {
+    /** Authored user-action rejection; retains IllegalStateException API compatibility. */
+    public static final class Rejected extends IllegalStateException {
+        public Rejected(String message) { super(message); }
+    }
+
+    /** Authored argument rejection, distinct from malformed durable-state parser failures. */
+    public static final class RejectedArgument extends IllegalArgumentException {
+        public RejectedArgument(String message) { super(message); }
+        RejectedArgument(IllegalArgumentException cause) { super(cause.getMessage(), cause); }
+    }
+
+    /** Invoke only pure authored user-input validators, never durable-state reads/parsers. */
+    static void validateUserArgument(Runnable validation) {
+        try { validation.run(); }
+        catch (IllegalArgumentException rejection) { throw new RejectedArgument(rejection); }
+    }
+
+    /** Returns false only for explicitly typed rejection; all generic failures keep WARN + cause. */
+    static boolean reportOperationalFailure(Exception error, String fixedMessage,
+                                             java.util.function.BiConsumer<String, Throwable> warning) {
+        if (error instanceof Rejected || error instanceof RejectedArgument) return false;
+        warning.accept(fixedMessage, error);
+        return true;
+    }
+
     public enum Recovery { NONE, DISCARD_DRAFT, DISCARD_STAGED }
     public record RecoveryDiagnostic(Recovery action, String message) {}
     record Selection(PrestigePerks.Build build, List<String> biomes, String author) {
@@ -34,7 +59,7 @@ public final class PrestigeService {
 
     static void requirePrestigeReset(MinecraftServer server) {
         if (!supportsPrestigeReset(server)) {
-            throw new IllegalStateException("Prestige is disabled in single-player; use a supervised dedicated server");
+            throw new Rejected("Prestige is disabled in single-player; use a supervised dedicated server");
         }
     }
 
@@ -272,11 +297,11 @@ public final class PrestigeService {
         requirePrestigeReset(server);
         if (Files.exists(control(server).resolve("staged-request-v5.tsv"))
                 || Files.exists(control(server).resolve("reset-request-v5.tsv"))) {
-            throw new IllegalStateException("prestige selection is locked");
+            throw new Rejected("prestige selection is locked");
         }
-        PrestigeContracts.validateBiomes(biomes);
-        if (!allowedBiomes(server, PrestigePerks.draft(server)).containsAll(biomes)) throw new IllegalArgumentException("biome preference is not allowlisted");
-        PrestigeContracts.validateAuthor(author);
+        validateUserArgument(() -> PrestigeContracts.validateBiomes(biomes));
+        if (!allowedBiomes(server, PrestigePerks.draft(server)).containsAll(biomes)) throw new RejectedArgument("biome preference is not allowlisted");
+        validateUserArgument(() -> PrestigeContracts.validateAuthor(author));
         PrestigeContracts.Lineage lineage = lineage(server);
         PrestigePerks.setBiomes(server, biomes);
         PrestigeContracts.writeDraft(control(server).resolve("draft-v5.tsv"), new PrestigeContracts.Draft(
@@ -286,16 +311,16 @@ public final class PrestigeService {
 
     public static void setBiomeSlot(ServerPlayer player, int slot, String value) throws IOException {
         requirePrestigeReset(player.server);
-        if (slot < 0 || slot > 2) throw new IllegalArgumentException("biome preference slot is outside 1..3");
+        if (slot < 0 || slot > 2) throw new RejectedArgument("biome preference slot is outside 1..3");
         List<String> current = new java.util.ArrayList<>(PrestigePerks.draft(player.server).biomes());
         if (value.equals("clear")) {
-            if (slot == 0) throw new IllegalArgumentException("primary biome cannot be cleared");
+            if (slot == 0) throw new RejectedArgument("primary biome cannot be cleared");
             while (current.size() > slot) current.remove(current.size() - 1);
         } else {
-            PrestigeContracts.validateBiome(value);
-            if (slot > current.size()) throw new IllegalArgumentException("biome preferences must be contiguous");
+            validateUserArgument(() -> PrestigeContracts.validateBiome(value));
+            if (slot > current.size()) throw new RejectedArgument("biome preferences must be contiguous");
             if (current.contains(value) && (slot >= current.size() || !current.get(slot).equals(value))) {
-                throw new IllegalArgumentException("biome preferences must be unique");
+                throw new RejectedArgument("biome preferences must be unique");
             }
             if (slot == current.size()) current.add(value); else current.set(slot, value);
         }
@@ -314,18 +339,18 @@ public final class PrestigeService {
 
     public static void stage(MinecraftServer server) throws IOException {
         requirePrestigeReset(server);
-        if (Files.exists(control(server).resolve("reset-request-v5.tsv"))) throw new IllegalStateException("reset already committed");
+        if (Files.exists(control(server).resolve("reset-request-v5.tsv"))) throw new Rejected("reset already committed");
         Path draftPath = control(server).resolve("draft-v5.tsv");
         if (!Files.isRegularFile(draftPath)) {
-            throw new IllegalStateException("no prestige draft exists; select biomes first with /better_world_management select <biomes>");
+            throw new Rejected("no prestige draft exists; select biomes first with /better_world_management select <biomes>");
         }
         PrestigeContracts.Draft draft = PrestigeContracts.readDraft(draftPath);
         PrestigeContracts.Lineage lineage = lineage(server);
         if (!draft.lineageId().equals(lineage.lineageId()) || draft.generation() != lineage.generation()
                 || !draft.worldName().equals(worldName(server))) {
-            throw new IllegalStateException("draft identity is stale");
+            throw new Rejected("draft identity is stale");
         }
-        if (!allowedBiomes(server).containsAll(draft.biomes())) throw new IllegalStateException("draft biome is no longer allowlisted");
+        if (!allowedBiomes(server).containsAll(draft.biomes())) throw new Rejected("draft biome is no longer allowlisted");
         PrestigePerks.stage(server, draft.biomes());
         PrestigeContracts.writeStaged(control(server).resolve("staged-request-v5.tsv"), new PrestigeContracts.Staged(
                 draft.lineageId(), draft.generation(), draft.biomes(), draft.author(), draft.worldName()));
@@ -347,7 +372,7 @@ public final class PrestigeService {
 
     public static void cancel(MinecraftServer server) throws IOException {
         requirePrestigeReset(server);
-        if (Files.exists(control(server).resolve("reset-request-v5.tsv"))) throw new IllegalStateException("committed reset cannot be cancelled in-game");
+        if (Files.exists(control(server).resolve("reset-request-v5.tsv"))) throw new Rejected("committed reset cannot be cancelled in-game");
         Files.deleteIfExists(control(server).resolve("staged-request-v5.tsv"));
         PrestigePerks.cancel(server);
         observed("prestige.stage", "cancelled", "uncommitted_request");
@@ -363,16 +388,16 @@ public final class PrestigeService {
         requirePrestigeReset(server);
         String currentWorld = worldName(server);
         Path resetPath = control(server).resolve("reset-request-v5.tsv");
-        if (Files.exists(resetPath)) throw new IllegalStateException("reset already committed");
+        if (Files.exists(resetPath)) throw new Rejected("reset already committed");
         Path stagedPath = control(server).resolve("staged-request-v5.tsv");
         if (!Files.isRegularFile(stagedPath)) {
-            throw new IllegalStateException("no staged prestige request exists; run /better_world_management stage first");
+            throw new Rejected("no staged prestige request exists; run /better_world_management stage first");
         }
         PrestigeContracts.Staged staged = PrestigeContracts.readStaged(stagedPath);
         PrestigeContracts.Lineage lineage = lineage(server);
         if (!staged.lineageId().equals(lineage.lineageId()) || staged.generation() != lineage.generation()
                 || !staged.worldName().equals(currentWorld)) {
-            throw new IllegalStateException("staged identity is stale");
+            throw new Rejected("staged identity is stale");
         }
         String transaction = PrestigeContracts.newTransactionId();
         long oldSeed = server.overworld().getSeed();
@@ -417,12 +442,12 @@ public final class PrestigeService {
     private static void requireCondenser(ServerPlayer player, BlockPos pos) {
         if (!(player.level().getBlockEntity(pos) instanceof WorldCondenserBlockEntity)
                 || !WorldCondenserAssembly.valid(player.level(), pos)) {
-            throw new IllegalStateException("a nearby Condenser above an unbound Font is required");
+            throw new Rejected("a nearby Condenser above an unbound Font is required");
         }
     }
 
     private static void requireOperator(ServerPlayer player) {
-        if (!player.hasPermissions(4)) throw new IllegalArgumentException("permission level 4 required");
+        if (!player.hasPermissions(4)) throw new RejectedArgument("permission level 4 required");
     }
 
     public static String worldName(MinecraftServer server) {

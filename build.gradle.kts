@@ -147,3 +147,5 @@ tasks.processResources {
     inputs.properties(props)
     filesMatching(listOf("META-INF/mods.toml", "pack.mcmeta")) { expand(props) }
 }
+
+apply(from = "gradle/native-gametest-fixture.gradle")

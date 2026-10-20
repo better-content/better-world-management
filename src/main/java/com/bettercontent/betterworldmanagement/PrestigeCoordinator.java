@@ -114,8 +114,7 @@ public final class PrestigeCoordinator {
                                         "Selected Prestige biomes " + String.join(" > ", biomes) + "; stage with /better_world_management stage"), true);
                                 return 1;
                             } catch (Exception error) {
-                                if (error instanceof java.io.IOException) PrestigeMod.LOGGER.warn("Prestige CLI selection operation failed", error);
-                                else outcome("prestige.draft", "rejected", "invalid_selection");
+                                if (!PrestigeService.reportOperationalFailure(error, "Prestige CLI selection operation failed", PrestigeMod.LOGGER::warn)) outcome("prestige.draft", "rejected", "invalid_selection");
                                 context.getSource().sendFailure(Component.literal("Prestige selection failed: " + error.getMessage()));
                                 return 0;
                             }
@@ -128,8 +127,7 @@ public final class PrestigeCoordinator {
                                         "Staged prestige reset; commit with /better_world_management commit"), true);
                                 return 1;
                             } catch (Exception error) {
-                                if (error instanceof java.io.IOException) PrestigeMod.LOGGER.warn("Prestige CLI stage operation failed", error);
-                                else outcome("prestige.stage", "rejected", "invalid_staged_request");
+                                if (!PrestigeService.reportOperationalFailure(error, "Prestige CLI stage operation failed", PrestigeMod.LOGGER::warn)) outcome("prestige.stage", "rejected", "invalid_staged_request");
                                 context.getSource().sendFailure(Component.literal("Prestige stage failed: " + error.getMessage()));
                                 return 0;
                             }
@@ -155,8 +153,7 @@ public final class PrestigeCoordinator {
                                                 + "will be archived and reset."), false);
                                 return 1;
                             } catch (Exception error) {
-                                if (error instanceof java.io.IOException) PrestigeMod.LOGGER.warn("Prestige CLI commit operation failed", error);
-                                else outcome("prestige.commit", "rejected", "invalid_commit_request");
+                                if (!PrestigeService.reportOperationalFailure(error, "Prestige CLI commit operation failed", PrestigeMod.LOGGER::warn)) outcome("prestige.commit", "rejected", "invalid_commit_request");
                                 context.getSource().sendFailure(Component.literal("Prestige commit failed: " + error.getMessage()));
                                 return 0;
                             }
@@ -169,6 +166,8 @@ public final class PrestigeCoordinator {
                                 context.getSource().sendSuccess(() -> Component.literal("Cancelled staged prestige request"), true);
                                 return 1;
                             } catch (Exception error) {
+                                if (!PrestigeService.reportOperationalFailure(error, "Prestige CLI recovery cancel failed", PrestigeMod.LOGGER::warn))
+                                    outcome("prestige.recovery", "rejected", "invalid_cancel_request");
                                 context.getSource().sendFailure(Component.literal("Recovery cancel failed: " + error.getMessage()));
                                 return 0;
                             }
@@ -184,6 +183,8 @@ public final class PrestigeCoordinator {
             context.getSource().sendSuccess(() -> Component.literal((allocate ? "Allocated " : "Refunded ") + id), true);
             return 1;
         } catch (Exception error) {
+            if (!PrestigeService.reportOperationalFailure(error, "Prestige CLI perk change failed", PrestigeMod.LOGGER::warn))
+                outcome("prestige.perk", "rejected", "invalid_perk_request");
             context.getSource().sendFailure(Component.literal("Prestige perk change failed: " + error.getMessage()));
             return 0;
         }

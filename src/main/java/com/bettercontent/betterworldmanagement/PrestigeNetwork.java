@@ -163,7 +163,7 @@ public final class PrestigeNetwork {
                     case CANCEL -> { requirePhysicalMenu(player, menu); PrestigeService.cancel(player, packet.pos); }
                     case COMMIT -> {
                         requirePhysicalMenu(player, menu);
-                        if (!packet.value.isEmpty()) throw new IllegalArgumentException("commit does not accept a world name");
+                        if (!packet.value.isEmpty()) throw new PrestigeService.RejectedArgument("commit does not accept a world name");
                         String tx = PrestigeService.commit(player, packet.pos);
                         player.serverLevel().sendParticles(net.minecraft.core.particles.ParticleTypes.PORTAL,
                                 packet.pos.getX() + 0.5, packet.pos.getY() - 1.0, packet.pos.getZ() + 0.5,
@@ -174,14 +174,14 @@ public final class PrestigeNetwork {
                     }
                     case RECOVER_INVALID -> {
                         requirePhysicalMenu(player, menu);
-                        if (!packet.value.isEmpty()) throw new IllegalArgumentException("recovery does not accept a value");
+                        if (!packet.value.isEmpty()) throw new PrestigeService.RejectedArgument("recovery does not accept a value");
                         PrestigeService.recoverInvalid(player, packet.pos);
                         player.displayClientMessage(Component.literal("Discarded invalid uncommitted Prestige state."), false);
                     }
                     case DOWNLOAD -> {
                         SchematicLibrary.Entry entry = SchematicLibrary.list(player.server).stream()
                                 .filter(candidate -> candidate.id().equals(packet.value)).findFirst()
-                                .orElseThrow(() -> new IllegalArgumentException("unknown schematic entry"));
+                                .orElseThrow(() -> new PrestigeService.RejectedArgument("unknown schematic entry"));
                         byte[] data = SchematicLibrary.download(player.server, entry.id());
                         CHANNEL.sendTo(new DownloadPacket(entry.author(), entry.originalName(), entry.sha256(), data, false, 1, 1),
                                 player.connection.connection, NetworkDirection.PLAY_TO_CLIENT);
@@ -194,8 +194,8 @@ public final class PrestigeNetwork {
                             "applied", "native_action", () -> com.bettercontent.betterworldmanagement.diagnostics.PlaytestLog.fields("action", packet.action));
                 }
             } catch (Exception error) {
-                if (error instanceof java.io.IOException) PrestigeMod.LOGGER.warn("World Condenser action operation failed action={}", packet.action, error);
-                else if (PlaytestDiagnostics.LOG.enabled("condenser")) PlaytestDiagnostics.LOG.event("condenser", "condenser.action", "server",
+                if (!PrestigeService.reportOperationalFailure(error, "World Condenser action operation failed", PrestigeMod.LOGGER::warn)
+                        && PlaytestDiagnostics.LOG.enabled("condenser")) PlaytestDiagnostics.LOG.event("condenser", "condenser.action", "server",
                         "rejected", "action_validation", () -> com.bettercontent.betterworldmanagement.diagnostics.PlaytestLog.fields("action", packet.action));
                 player.displayClientMessage(Component.literal("World Condenser refused: " + error.getMessage()), false);
             }
@@ -209,7 +209,7 @@ public final class PrestigeNetwork {
 
         private static void requirePhysicalMenu(ServerPlayer player, WorldCondenserMenu menu) {
             if (menu.remote() || !menu.isInOriginalDimension(player) || !menu.stillValid(player)) {
-                throw new IllegalStateException("destructive actions require a nearby physical World Condenser menu");
+                throw new PrestigeService.Rejected("destructive actions require a nearby physical World Condenser menu");
             }
         }
     }
@@ -254,8 +254,8 @@ public final class PrestigeNetwork {
                 player.displayClientMessage(Component.literal("Published lineage schematic " + entry.originalName()), false);
             } catch (Exception error) {
                 String message = safeError(error);
-                if (error instanceof java.io.IOException) PrestigeMod.LOGGER.warn("World Condenser schematic publication operation failed", error);
-                else if (PlaytestDiagnostics.LOG.enabled("schematics")) PlaytestDiagnostics.LOG.event("schematics", "schematic.publish", "server",
+                if (!PrestigeService.reportOperationalFailure(error, "World Condenser schematic publication operation failed", PrestigeMod.LOGGER::warn)
+                        && PlaytestDiagnostics.LOG.enabled("schematics")) PlaytestDiagnostics.LOG.event("schematics", "schematic.publish", "server",
                         "rejected", "publication_validation", null);
                 player.displayClientMessage(Component.literal("World Condenser refused: " + message), false);
             }

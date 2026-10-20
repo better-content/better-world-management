@@ -98,8 +98,11 @@ public final class SchematicannonSubstitutionNetwork {
                     access.worldLifecycleManager$setSubstitution(packet.source, packet.target);
                     access.worldLifecycleManager$author(packet.source,player.getUUID());
                 }
-            } catch (IllegalArgumentException | IllegalStateException error) {
-                PrestigeMod.LOGGER.warn("Rejected Schematicannon substitution edit from {}: {}", player.getScoreboardName(), error.getMessage());
+            } catch (IllegalArgumentException error) {
+                if (PlaytestDiagnostics.LOG.enabled("substitution")) PlaytestDiagnostics.LOG.event("substitution", "schematicannon.rule_edit", "server",
+                        "rejected", "invalid_rule", null);
+            } catch (IllegalStateException error) {
+                PrestigeMod.LOGGER.warn("Schematicannon substitution operation failed", error);
             }
             send(player, cannon);
         }

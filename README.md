@@ -7,6 +7,12 @@ landing-search cancellation and actual health-result publication. Health records
 existing transaction identity and exact-landing/fresh flags, never seed, filesystem payload,
 operator names or schematics. A stop request is not archive completion, and published unresolved
 health is not an accepted successor. Real health-operation exceptions retain ERROR plus cause.
+Authored UI/CLI validation rejections use `PrestigeService.Rejected` or `RejectedArgument`
+(subtypes preserving the original `IllegalStateException`/`IllegalArgumentException` bases,
+conditions and messages). All generic exceptions, including malformed durable-state argument
+validation, retain fixed operational WARN plus their exact cause outside detail
+suppression. Menu records describe dispatch, not proof that a client rendered the menu; no actor,
+schematic name or seed/position is added to ordinary diagnostic details.
 DEBUG/TRACE share 120/minute (burst 20), 256 keys and 2,048-character records, with 30-second
 summaries. Startup INFO reports loaded version/mode/limits and dedicated-only reset scope;
 unavailable source identity is `UNKNOWN`. Stop/disconnect clears transient keys without rearming
@@ -46,7 +52,11 @@ Java 17 is required. The checked-in Gradle wrapper provides the supported build 
 ./gradlew verifyFull stageRuntimeJar
 ```
 
-`verifyFast` runs the JVM tests. `verifyFull` also runs the Forge GameTests. `stageRuntimeJar` copies the reobfuscated production artifact to `build/libs/better-world-management-0.1.0.jar`; deploy that canonical staged JAR.
+`verifyFast` runs the JVM tests plus native-fixture guard regressions. `verifyFull` also runs the Forge GameTests.
+The actual native working directory gets a defaults-only `server.properties` only when absent;
+existing settings are preserved. Native ERROR/FATAL diagnostics fail the owning full gate even if
+required tests report success. JVM controls cover typed expected rejection versus unexpected
+failure/cause visibility; fixture controls cover absent settings, preservation and ERROR/FATAL rejection. `stageRuntimeJar` copies the reobfuscated production artifact to `build/libs/better-world-management-0.1.0.jar`; deploy that canonical staged JAR.
 
 The non-shipping `visualHarness` source set validates the real Create menu. Run the `visualServer` and `visualClient` configurations under Xvfb, then issue `wlmvisual prepare <player>` and `wlmvisual capture <player> <name>` through the dedicated-server console. The server commands create the fixture and open the menu; the client harness only waits for that screen and invokes Minecraft's screenshot API. It does not inject player movement, mouse, keyboard, or gameplay controls.
 
