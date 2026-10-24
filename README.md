@@ -19,12 +19,9 @@ unavailable source identity is `UNKNOWN`. Stop/disconnect clears transient keys 
 process allowances. Pure emitter/contracts supplement native lifecycle gates, not supervisor
 archive acceptance.
 
-## Scope and authority
+## Scope
 
 This repository owns gameplay successor/archive persistence, not development artifact retention.
-Read [local instructions](AGENTS.md) and the
-[shared documentation/policy index](../../better-content-modpack/docs/README.md).
-
 
 World Lifecycle Manager is the Better Content Forge 1.20.1 mod for verified dedicated-server world resets, cold archives, rollback, World Condenser control, and the persistent lineage schematic library.
 
