@@ -98,11 +98,16 @@ public final class WorldCondenserScreen extends AbstractContainerScreen<WorldCon
         }
         int x = leftPos + 10;
         int contentWidth = WorldCondenserLayout.contentWidth(imageWidth);
-        int tabWidth = WorldCondenserLayout.tabWidth(contentWidth);
+        int tabWidth = Math.max(1, (contentWidth - 15) / 4);
         int tabY = WorldCondenserLayout.tabTop(imageWidth, imageHeight);
-        addRenderableWidget(tabButton("Configure", x, tabY, tabWidth, 0));
-        addRenderableWidget(tabButton("Schematics", x + tabWidth + 5, tabY, tabWidth, 1));
-        addRenderableWidget(tabButton("Perks", x + (tabWidth + 5) * 2, tabY, tabWidth, 2));
+        addRenderableWidget(tabButton("Reset", x, tabY, tabWidth, 0));
+        addRenderableWidget(tabButton("Library", x + tabWidth + 5, tabY, tabWidth, 1));
+        addRenderableWidget(tabButton("Class", x + (tabWidth + 5) * 2, tabY, tabWidth, 2));
+        Button axioms = Button.builder(Component.literal("Axioms"), button ->
+                com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomNetwork.refresh())
+                .bounds(x + (tabWidth + 5) * 3, topPos + tabY, tabWidth, 20).build();
+        axioms.setTooltip(Tooltip.create(Component.literal("World Axioms — twenty-four independent successor laws; separate from Class and Embark")));
+        addRenderableWidget(axioms);
         if (tab == 0) rebuildReset(state, x);
         else if (tab == 1) rebuildSchematics(state, x);
         else rebuildPerks(state, x);

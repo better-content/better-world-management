@@ -1,0 +1,19 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="AGPL-3.0-or-later"
+[[mods]]
+modId="better_world_management_feasibility"
+version="0.1.0"
+displayName="World Condenser Native Feasibility (Non-shipping)"
+[[dependencies.better_world_management_feasibility]]
+modId="better_world_management"
+mandatory=true
+versionRange="[0,)"
+ordering="AFTER"
+side="BOTH"
+[[dependencies.better_world_management_feasibility]]
+modId="hexerei"
+mandatory=true
+versionRange="[1.20.1-0.4.2.3]"
+ordering="AFTER"
+side="BOTH"

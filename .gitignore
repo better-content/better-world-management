@@ -6,6 +6,7 @@ run-client/
 run-server/
 run-data/
 run-gametest/
+run-feasibility/
 run-visual-client/
 run-visual-server/
 logs/

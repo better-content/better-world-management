@@ -137,6 +137,7 @@ public final class PrestigeService {
     private static Selection draftSelection(MinecraftServer server, PrestigeContracts.Lineage lineage,
                                             String currentWorld, String defaultAuthor) throws IOException {
         PrestigePerks.Build build = PrestigePerks.draft(server);
+        com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomService.draft(server);
         Path path = control(server).resolve("draft-v5.tsv");
         if (!Files.isRegularFile(path)) {
             if (!build.biomes().isEmpty()) throw new IllegalStateException("prestige draft contracts are incomplete");
@@ -156,6 +157,11 @@ public final class PrestigeService {
         PrestigeContracts.Staged staged = PrestigeContracts.readStaged(path);
         PrestigePerks.Build build = PrestigePerks.staged(server);
         validateStagedSelection(lineage, currentWorld, staged, build);
+        var axioms = com.bettercontent.betterworldmanagement.worldshaping.AxiomContracts.read(
+                com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomService.control(server,
+                        com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomService.STAGED));
+        com.bettercontent.betterworldmanagement.worldshaping.AxiomContracts.identity(axioms, lineage.lineageId(), lineage.generation(), currentWorld);
+        if (!axioms.phase().equals("staged")) throw new IllegalStateException("world-law staged phase mismatch");
         return new Selection(build, staged.biomes(), staged.author());
     }
 
@@ -213,7 +219,9 @@ public final class PrestigeService {
             return new RecoveryDiagnostic(Recovery.NONE, "");
         }
         boolean stagedArtifacts = Files.exists(control.resolve("staged-request-v5.tsv"))
-                || Files.exists(PrestigePerks.stagedPath(server));
+                || Files.exists(PrestigePerks.stagedPath(server))
+                || Files.exists(com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomService.control(server,
+                        com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomService.STAGED));
         if (stagedArtifacts) {
             try {
                 stagedSelection(server, lineage, currentWorld);
@@ -223,7 +231,9 @@ public final class PrestigeService {
             }
         }
         boolean draftArtifacts = Files.exists(control.resolve("draft-v5.tsv"))
-                || Files.exists(PrestigePerks.draftPath(server));
+                || Files.exists(PrestigePerks.draftPath(server))
+                || Files.exists(com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomService.control(server,
+                        com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomService.DRAFT));
         if (draftArtifacts) {
             try {
                 draftSelection(server, lineage, currentWorld, "Operator");
@@ -255,11 +265,13 @@ public final class PrestigeService {
         if (recovery.action() == Recovery.DISCARD_STAGED) {
             Files.deleteIfExists(control(server).resolve("staged-request-v5.tsv"));
             Files.deleteIfExists(PrestigePerks.stagedPath(server));
+            com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomService.cancel(server);
             recovery = diagnoseRecovery(server);
         }
         if (recovery.action() == Recovery.DISCARD_DRAFT) {
             Files.deleteIfExists(control(server).resolve("draft-v5.tsv"));
             Files.deleteIfExists(PrestigePerks.draftPath(server));
+            com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomService.discardDraft(server);
         }
     }
 
@@ -284,6 +296,7 @@ public final class PrestigeService {
     }
 
     public static void setBiomeSlot(ServerPlayer player, int slot, String value) throws IOException {
+        requireOperator(player);
         requirePrestigeReset(player.server);
         if (slot < 0 || slot > 2) throw new IllegalArgumentException("biome preference slot is outside 1..3");
         List<String> current = new java.util.ArrayList<>(PrestigePerks.draft(player.server).biomes());
@@ -302,6 +315,7 @@ public final class PrestigeService {
     }
 
     public static void stage(ServerPlayer player, BlockPos interfacePos) throws IOException {
+        requireOperator(player);
         requireCondenser(player, interfacePos);
         stage(player.server);
         if (player.level().getBlockEntity(interfacePos) instanceof WorldCondenserBlockEntity condenser) {
@@ -325,6 +339,7 @@ public final class PrestigeService {
             throw new IllegalStateException("draft identity is stale");
         }
         if (!allowedBiomes(server).containsAll(draft.biomes())) throw new IllegalStateException("draft biome is no longer allowlisted");
+        com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomService.stage(server);
         PrestigePerks.stage(server, draft.biomes());
         PrestigeContracts.writeStaged(control(server).resolve("staged-request-v5.tsv"), new PrestigeContracts.Staged(
                 draft.lineageId(), draft.generation(), draft.biomes(), draft.author(), draft.worldName()));
@@ -336,6 +351,7 @@ public final class PrestigeService {
     }
 
     public static void cancel(ServerPlayer player, BlockPos interfacePos) throws IOException {
+        requireOperator(player);
         requireCondenser(player, interfacePos);
         cancel(player.server);
         if (player.level().getBlockEntity(interfacePos) instanceof WorldCondenserBlockEntity condenser) {
@@ -348,6 +364,7 @@ public final class PrestigeService {
         if (Files.exists(control(server).resolve("reset-request-v5.tsv"))) throw new IllegalStateException("committed reset cannot be cancelled in-game");
         Files.deleteIfExists(control(server).resolve("staged-request-v5.tsv"));
         PrestigePerks.cancel(server);
+        com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomService.cancel(server);
     }
 
     public static String commit(ServerPlayer player, BlockPos interfacePos) throws IOException {
@@ -373,6 +390,7 @@ public final class PrestigeService {
         }
         String transaction = PrestigeContracts.newTransactionId();
         long oldSeed = server.overworld().getSeed();
+        com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomService.commit(server, transaction);
         PrestigePerks.commit(server, transaction, staged.biomes());
         PrestigeContracts.writeWorldBinding(worldBindingPath(server), new PrestigeContracts.WorldBinding(
                 lineage.lineageId(), lineage.generation(), transaction, staged.worldName(), oldSeed, staged.biomes()));
