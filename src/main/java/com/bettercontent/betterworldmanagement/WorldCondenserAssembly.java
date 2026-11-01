@@ -7,12 +7,12 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraftforge.registries.ForgeRegistries;
 
-final class WorldCondenserAssembly {
+public final class WorldCondenserAssembly {
     private static final ResourceLocation FONT = new ResourceLocation("better_dimension_fonts", "dimensional_font");
 
     private WorldCondenserAssembly() {}
 
-    static boolean valid(LevelReader level, BlockPos devicePos) {
+    public static boolean valid(LevelReader level, BlockPos devicePos) {
         if (!level.getBlockState(devicePos.below()).isAir()) return false;
         BlockState font = level.getBlockState(devicePos.below(2));
         if (!FONT.equals(ForgeRegistries.BLOCKS.getKey(font.getBlock()))) return false;

@@ -24,6 +24,7 @@ public final class PrestigeMod {
         PrestigeRegistry.BLOCK_ENTITIES.register(modBus);
         PrestigeRegistry.MENUS.register(modBus);
         PrestigeNetwork.register();
+        com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomNetwork.register();
         SchematicannonSubstitutionNetwork.register();
         modBus.addListener(this::onCreativeTab);
         modBus.addListener(this::onRegisterGameTests);
@@ -32,6 +33,9 @@ public final class PrestigeMod {
             MinecraftForge.EVENT_BUS.register(SchematicannonSubstitutionClient.class);
         });
         MinecraftForge.EVENT_BUS.register(PrestigeCoordinator.class);
+        MinecraftForge.EVENT_BUS.register(com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomLifecycle.class);
+        MinecraftForge.EVENT_BUS.register(com.bettercontent.betterworldmanagement.worldshaping.AxiomClaims.class);
+        com.bettercontent.betterworldmanagement.worldshaping.exploration.ExplorationEffects.register();
     }
 
     private void onCreativeTab(BuildCreativeModeTabContentsEvent event) {

@@ -172,6 +172,7 @@ public final class PrestigeCoordinator {
                             try {
                                 Files.deleteIfExists(PrestigeService.control(context.getSource().getServer()).resolve("staged-request-v5.tsv"));
                                 PrestigePerks.cancel(context.getSource().getServer());
+                                com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomService.cancel(context.getSource().getServer());
                                 context.getSource().sendSuccess(() -> Component.literal("Cancelled staged prestige request"), true);
                                 return 1;
                             } catch (Exception error) {
@@ -329,6 +330,8 @@ public final class PrestigeCoordinator {
             publishSuccessorHealth(server, active.level, active.successor, active.perks, result.landing());
         } catch (Exception error) {
             cancelLandingSearch();
+            try { com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomService.writeHealth(server, false, error.getMessage()); }
+            catch (Exception healthError) { PrestigeMod.LOGGER.error("Could not publish world-law failure", healthError); }
             server.sendSystemMessage(Component.literal("Prestige successor health failed: " + error.getMessage()));
         }
     }
@@ -474,6 +477,9 @@ public final class PrestigeCoordinator {
         // Empty first generation requests use the safe temperate search set, but
         // retain the legacy contract's '-' resolved preference marker.
         String resolvedBiome = foundExact && !successor.biomes().isEmpty() ? confirmed.resolvedBiome() : "-";
+        if (fresh) com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomService.applyWorld(server, spawn);
+        com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomService.writeHealth(server, fresh,
+                fresh ? "Native arrival and world policies saved" : "No fresh exact-biome safe landing");
         PrestigeContracts.writeHealth(PrestigeService.control(server).resolve("health-result-v5.tsv"), successor,
                 level.getSeed(), resolvedBiome, actualBiome, PrestigeService.worldName(server), fresh, foundExact);
         PrestigePerks.writeHealth(server, successor, perks, resolvedBiome, spawn);
@@ -625,7 +631,8 @@ public final class PrestigeCoordinator {
                     ResourceLocation requested = new ResourceLocation(surfaceProbe.preference());
                     boolean matches = level.getBiome(surface).unwrapKey()
                             .map(key -> key.location().equals(requested)).orElse(false);
-                    if (matches) return new LandingResult(surface, surfaceProbe.preference());
+                    if (matches)
+                        return new LandingResult(surface, surfaceProbe.preference());
                 }
             }
             return null;
@@ -640,7 +647,8 @@ public final class PrestigeCoordinator {
             surfaceOffsetIndex++;
             pendingSurface = new BlockPos(surfaceProbe.x() + xOffset, 0, surfaceProbe.z() + zOffset);
             ChunkPos chunk = new ChunkPos(pendingSurface);
-            pendingChunk = level.getChunkSource().getChunkFuture(chunk.x, chunk.z, ChunkStatus.FULL, true)
+            pendingChunk = LandingChunkRequests.offServerThread(() ->
+                    level.getChunkSource().getChunkFuture(chunk.x, chunk.z, ChunkStatus.FULL, true))
                     .thenApply(either -> either.left().orElse(null));
             return true;
         }

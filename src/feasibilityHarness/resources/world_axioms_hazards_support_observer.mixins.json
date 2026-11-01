@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.bettercontent.betterworldmanagement.feasibility.observer.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "InventoryScanPolicyObservationMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

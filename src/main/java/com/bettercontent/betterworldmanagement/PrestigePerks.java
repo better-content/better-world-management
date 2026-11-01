@@ -291,7 +291,7 @@ public final class PrestigePerks {
             if (lineage.generation() == 0) return EnumSet.noneOf(Perk.class);
             throw new IllegalStateException("active perk state is missing for a prestiged lineage");
         }
-        Map<String, String> fields = readFields(path, ACTIVE_MAGIC, List.of("lineage", "generation", "perks"));
+        Map<String, String> fields = PrestigeActivePerksContract.readFields(path);
         if (!lineage.lineageId().equals(fields.get("lineage")) || lineage.generation() != parseLong(fields, "generation")) throw new IllegalStateException("active perk state does not match lineage generation");
         EnumSet<Perk> perks = parsePerks(fields.get("perks"));
         validatePaidSet(perks, (int) Math.min(MAX_POINTS, lineage.generation()));
