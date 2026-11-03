@@ -12,23 +12,47 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      BC_CI_PACK_REF: ${{ vars.BC_CI_PACK_REF }}
     steps:
+      - name: Require immutable provider baseline
+        shell: bash
+        run: '[[ "$BC_CI_PACK_REF" =~ ^[0-9a-f]{40}$ ]] || { echo "Set BC_CI_PACK_REF to a reviewed full pack commit"; exit 1; }'
       - uses: actions/checkout@v4
+        with:
+          path: mod_source/better-world-management
+      - name: Check out pinned pack inputs
+        uses: actions/checkout@v4
+        with:
+          repository: better-content/better-content-modpack
+          ref: ${{ env.BC_CI_PACK_REF }}
+          path: better-content-modpack
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
+      - name: Prepare verified providers and Lodestone compile API
+        run: >-
+          python3 better-content-modpack/.github/scripts/prepare-native-ci-inputs.py
+          --pack-root better-content-modpack --repository better-world-management
+          --source-root mod_source/better-world-management --output native-ci
       - name: Verify repository
-        run: ./gradlew --no-daemon verifyFull
+        working-directory: mod_source/better-world-management
+        run: ./gradlew --no-daemon --max-workers=2 --no-build-cache verifyFull
       - name: Preserve verification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: repository-verification
           path: |
-            build/reports/
-            build/test-results/
-            build/ci-provider-jars/providers.json
+            mod_source/better-world-management/build/reports/
+            mod_source/better-world-management/build/test-results/
+            mod_source/better-world-management/run-gametest/logs/
+            native-ci/receipt.json
+            native-ci/providers/providers.json
           if-no-files-found: ignore
           retention-days: 14
