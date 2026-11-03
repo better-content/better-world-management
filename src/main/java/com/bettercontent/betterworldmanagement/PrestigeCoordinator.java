@@ -111,14 +111,12 @@ public final class PrestigeCoordinator {
                             try {
                                 java.util.List<String> biomes = parseBiomeArguments(StringArgumentType.getString(context, "biomes"));
                                 PrestigeService.saveDraft(context.getSource().getServer(), biomes, "Operator");
-                                PrestigeMod.LOGGER.info("Prestige CLI selection succeeded actor={} biomes={}",
-                                        context.getSource().getTextName(), String.join(",", biomes));
                                 context.getSource().sendSuccess(() -> Component.literal(
                                         "Selected Prestige biomes " + String.join(" > ", biomes) + "; stage with /better_world_management stage"), true);
                                 return 1;
                             } catch (Exception error) {
-                                PrestigeMod.LOGGER.warn("Prestige CLI selection failed actor={}: {}",
-                                        context.getSource().getTextName(), error.getMessage());
+                                if (!PrestigeService.reportOperationalFailure(error, "Prestige CLI selection operation failed", PrestigeMod.LOGGER::warn))
+                                    outcome("prestige.draft", "rejected", "invalid_selection");
                                 context.getSource().sendFailure(Component.literal("Prestige selection failed: " + error.getMessage()));
                                 return 0;
                             }
@@ -127,13 +125,12 @@ public final class PrestigeCoordinator {
                         .executes(context -> {
                             try {
                                 PrestigeService.stage(context.getSource().getServer());
-                                PrestigeMod.LOGGER.info("Prestige CLI stage succeeded actor={}", context.getSource().getTextName());
                                 context.getSource().sendSuccess(() -> Component.literal(
                                         "Staged prestige reset; commit with /better_world_management commit"), true);
                                 return 1;
                             } catch (Exception error) {
-                                PrestigeMod.LOGGER.warn("Prestige CLI stage failed actor={}: {}",
-                                        context.getSource().getTextName(), error.getMessage());
+                                if (!PrestigeService.reportOperationalFailure(error, "Prestige CLI stage operation failed", PrestigeMod.LOGGER::warn))
+                                    outcome("prestige.stage", "rejected", "invalid_staged_request");
                                 context.getSource().sendFailure(Component.literal("Prestige stage failed: " + error.getMessage()));
                                 return 0;
                             }
@@ -152,8 +149,6 @@ public final class PrestigeCoordinator {
                         .executes(context -> {
                             try {
                                 String transaction = PrestigeService.commit(context.getSource().getServer());
-                                PrestigeMod.LOGGER.info("Prestige CLI commit succeeded actor={} transaction={}",
-                                        context.getSource().getTextName(), transaction);
                                 context.getSource().sendSuccess(() -> Component.literal(
                                         "Prestige commit accepted: " + transaction + "; clean shutdown is scheduled"), true);
                                 context.getSource().getServer().getPlayerList().broadcastSystemMessage(Component.literal(
@@ -161,8 +156,8 @@ public final class PrestigeCoordinator {
                                                 + "will be archived and reset."), false);
                                 return 1;
                             } catch (Exception error) {
-                                PrestigeMod.LOGGER.warn("Prestige CLI commit failed actor={}: {}",
-                                        context.getSource().getTextName(), error.getMessage());
+                                if (!PrestigeService.reportOperationalFailure(error, "Prestige CLI commit operation failed", PrestigeMod.LOGGER::warn))
+                                    outcome("prestige.commit", "rejected", "invalid_commit_request");
                                 context.getSource().sendFailure(Component.literal("Prestige commit failed: " + error.getMessage()));
                                 return 0;
                             }
@@ -176,6 +171,8 @@ public final class PrestigeCoordinator {
                                 context.getSource().sendSuccess(() -> Component.literal("Cancelled staged prestige request"), true);
                                 return 1;
                             } catch (Exception error) {
+                                if (!PrestigeService.reportOperationalFailure(error, "Prestige CLI recovery cancel failed", PrestigeMod.LOGGER::warn))
+                                    outcome("prestige.recovery", "rejected", "invalid_cancel_request");
                                 context.getSource().sendFailure(Component.literal("Recovery cancel failed: " + error.getMessage()));
                                 return 0;
                             }
@@ -191,6 +188,8 @@ public final class PrestigeCoordinator {
             context.getSource().sendSuccess(() -> Component.literal((allocate ? "Allocated " : "Refunded ") + id), true);
             return 1;
         } catch (Exception error) {
+            if (!PrestigeService.reportOperationalFailure(error, "Prestige CLI perk change failed", PrestigeMod.LOGGER::warn))
+                outcome("prestige.perk", "rejected", "invalid_perk_request");
             context.getSource().sendFailure(Component.literal("Prestige perk change failed: " + error.getMessage()));
             return 0;
         }
@@ -249,7 +248,7 @@ public final class PrestigeCoordinator {
     static java.util.List<String> parseBiomeArguments(String input) {
         String stripped = input == null ? "" : input.strip();
         java.util.List<String> biomes = stripped.isEmpty() ? java.util.List.of() : java.util.List.of(stripped.split("\\s+"));
-        PrestigeContracts.validateBiomes(biomes);
+        PrestigeService.validateUserArgument(() -> PrestigeContracts.validateBiomes(biomes));
         return biomes;
     }
 
@@ -288,6 +287,7 @@ public final class PrestigeCoordinator {
         tickLandingSearch(server);
         if (stopCountdown >= 0 && --stopCountdown <= 0) {
             stopCountdown = -1;
+            outcome("prestige.stop", "requested", "committed_transition");
             server.halt(false);
             return;
         }
@@ -302,9 +302,12 @@ public final class PrestigeCoordinator {
                     && PrestigeContracts.readActiveSuccessor(activePath).transactionId().equals(transaction)) {
                 Files.deleteIfExists(shutdownPath);
                 server.saveEverything(true, true, true);
+                outcome("prestige.stop", "requested", "matched_successor_transaction");
                 server.halt(false);
             }
         } catch (Exception error) {
+            PrestigeMod.LOGGER.warn("Invalid prestige shutdown request", error);
+            outcome("prestige.stop", "rejected", "invalid_shutdown_request");
             server.sendSystemMessage(Component.literal("Ignoring invalid prestige shutdown request: " + error.getMessage()));
         }
     }
@@ -315,12 +318,17 @@ public final class PrestigeCoordinator {
         if (initialSpawnSearch != null && initialSpawnSearch.server == event.getServer()) cancelInitialSpawnSearch();
     }
 
+    private static void outcome(String event, String result, String reason) {
+        if (PlaytestDiagnostics.LOG.enabled("prestige")) PlaytestDiagnostics.LOG.event("prestige", event, "server", result, reason, null);
+    }
+
     private static void tickLandingSearch(MinecraftServer server) {
         LandingSearchJob active = landingSearch;
         if (active == null || active.server != server) return;
         try {
             if (!active.requestStillPresent()) {
                 cancelLandingSearch();
+                outcome("prestige.landing_search", "cancelled", "request_changed");
                 server.sendSystemMessage(Component.literal("Prestige successor landing search cancelled because its request changed"));
                 return;
             }
@@ -330,6 +338,7 @@ public final class PrestigeCoordinator {
             publishSuccessorHealth(server, active.level, active.successor, active.perks, result.landing());
         } catch (Exception error) {
             cancelLandingSearch();
+            PrestigeMod.LOGGER.error("Prestige successor health operation failed", error);
             try { com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomService.writeHealth(server, false, error.getMessage()); }
             catch (Exception healthError) { PrestigeMod.LOGGER.error("Could not publish world-law failure", healthError); }
             server.sendSystemMessage(Component.literal("Prestige successor health failed: " + error.getMessage()));
@@ -483,6 +492,8 @@ public final class PrestigeCoordinator {
         PrestigeContracts.writeHealth(PrestigeService.control(server).resolve("health-result-v5.tsv"), successor,
                 level.getSeed(), resolvedBiome, actualBiome, PrestigeService.worldName(server), fresh, foundExact);
         PrestigePerks.writeHealth(server, successor, perks, resolvedBiome, spawn);
+        if (PlaytestDiagnostics.LOG.enabled("prestige")) com.bettercontent.betterworldmanagement.diagnostics.FeatureTelemetry.health(
+                PlaytestDiagnostics.LOG, successor.transactionId(), fresh, foundExact);
         server.sendSystemMessage(Component.literal("Prestige successor health published for " + successor.transactionId()
                 + " biome=" + actualBiome));
     }

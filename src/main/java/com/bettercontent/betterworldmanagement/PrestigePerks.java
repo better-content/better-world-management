@@ -155,42 +155,47 @@ public final class PrestigePerks {
         return build;
     }
 
+    private static Perk requestedPerk(String id) {
+        try { return Perk.parse(id); }
+        catch (IllegalArgumentException rejection) { throw new PrestigeService.RejectedArgument(rejection); }
+    }
+
     public static void toggle(ServerPlayer player, String id) throws IOException { requireEditable(player); toggle(player.server, id); }
 
     public static void toggle(MinecraftServer server, String id) throws IOException {
         requireEditable(server);
         Build current = draft(server);
-        Perk perk = Perk.parse(id);
+        Perk perk = requestedPerk(id);
         EnumSet<Perk> selected = current.perks().clone();
         if (selected.contains(perk)) {
             selected.remove(perk);
             try { validatePaidSet(selected, current.budget()); }
-            catch (IllegalArgumentException error) { throw new IllegalStateException("refund dependent perks first: " + error.getMessage()); }
+            catch (IllegalArgumentException error) { throw new PrestigeService.Rejected("refund dependent perks first: " + error.getMessage()); }
         } else {
-            if (selected.size() >= current.budget()) throw new IllegalStateException("no prestige perk points remain");
+            if (selected.size() >= current.budget()) throw new PrestigeService.Rejected("no prestige perk points remain");
             selected.add(perk);
-            validatePaidSet(selected, current.budget());
+            PrestigeService.validateUserArgument(() -> validatePaidSet(selected, current.budget()));
         }
         writeBuild(draftPath(server), DRAFT_MAGIC, new Build(current.lineageId(), current.baseGeneration(),
                 selected, current.biomes()), null);
     }
 
     public static void allocate(MinecraftServer server, String id) throws IOException {
-        Perk perk = Perk.parse(id);
-        if (draft(server).has(perk)) throw new IllegalStateException("perk is already allocated");
+        Perk perk = requestedPerk(id);
+        if (draft(server).has(perk)) throw new PrestigeService.Rejected("perk is already allocated");
         toggle(server, id);
     }
 
     public static void refund(MinecraftServer server, String id) throws IOException {
-        Perk perk = Perk.parse(id);
-        if (!draft(server).has(perk)) throw new IllegalStateException("perk is not allocated");
+        Perk perk = requestedPerk(id);
+        if (!draft(server).has(perk)) throw new PrestigeService.Rejected("perk is not allocated");
         toggle(server, id);
     }
 
     public static void setBiomes(MinecraftServer server, List<String> biomes) throws IOException {
         requireEditable(server);
         Build current = draft(server);
-        if (!biomes.isEmpty()) PrestigeContracts.validateBiomes(biomes);
+        if (!biomes.isEmpty()) PrestigeService.validateUserArgument(() -> PrestigeContracts.validateBiomes(biomes));
         writeBuild(draftPath(server), DRAFT_MAGIC, new Build(current.lineageId(), current.baseGeneration(),
                 current.perks(), biomes), null);
     }
@@ -282,7 +287,7 @@ public final class PrestigePerks {
         requireEditable(player.server);
     }
     private static void requireEditable(MinecraftServer server) {
-        if (Files.exists(stagedPath(server)) || Files.exists(PrestigeService.control(server).resolve("reset-request-v5.tsv"))) throw new IllegalStateException("perk build is locked by a staged reset");
+        if (Files.exists(stagedPath(server)) || Files.exists(PrestigeService.control(server).resolve("reset-request-v5.tsv"))) throw new PrestigeService.Rejected("perk build is locked by a staged reset");
     }
 
     private static EnumSet<Perk> readActive(MinecraftServer server, PrestigeContracts.Lineage lineage) throws IOException {

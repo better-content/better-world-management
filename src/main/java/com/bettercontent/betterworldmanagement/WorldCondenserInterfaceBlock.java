@@ -90,9 +90,10 @@ public final class WorldCondenserInterfaceBlock extends BaseEntityBlock {
                     buffer.writeBoolean(false);
                     buffer.writeVarInt(0);
                 });
-                PrestigeMod.LOGGER.info("World Condenser opened for {} at {}", serverPlayer.getScoreboardName(), pos);
+                if (PlaytestDiagnostics.LOG.enabled("condenser")) PlaytestDiagnostics.LOG.event("condenser", "condenser.menu", "server",
+                        "open_requested", "native_menu_dispatch", null);
             } catch (RuntimeException error) {
-                PrestigeMod.LOGGER.error("World Condenser menu failed to open for {} at {}", serverPlayer.getScoreboardName(), pos, error);
+                PrestigeMod.LOGGER.error("World Condenser menu failed to open", error);
                 serverPlayer.displayClientMessage(Component.literal("World Condenser failed to open; check the server log."), false);
             }
         }

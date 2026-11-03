@@ -123,7 +123,7 @@ dependencies {
     compileOnly(deobf("curse.maven:blood-magic-224791:${property("bloodmagic_file_id")}"))
     compileOnly(deobf("worldcondenser.lab:better-dimension-fonts:1.0.0"))
     compileOnly(deobf("worldcondenser.lab:lodestone:1.20.1-1.6.4.1"))
-    compileOnly(deobf("worldcondenser.lab:better-ore-geology:0.2.0"))
+    compileOnly(deobf("worldcondenser.lab:better-ore-geology:0.3.0"))
     compileOnly(deobf("worldcondenser.lab:better-bumblezone-crops:0.1.0"))
     compileOnly(deobf("worldcondenser.lab:better-celestial-events:0.1.0"))
     compileOnly(deobf("worldcondenser.lab:better-spirit-commerce:1.0.1"))

@@ -65,14 +65,14 @@ public final class SchematicLibrary {
     private static Entry publish(Path serverRoot, String author, String fileName,
                                  byte[] compressedNbt, long generation,
                                  MinecraftServer server) throws IOException {
-        PrestigeContracts.validateAuthor(author);
-        if (!safeFileName(fileName)) throw new IllegalArgumentException("unsafe schematic filename");
-        if (generation < 0) throw new IllegalArgumentException("schematic generation is negative");
+        PrestigeService.validateUserArgument(() -> PrestigeContracts.validateAuthor(author));
+        if (!safeFileName(fileName)) throw new PrestigeService.RejectedArgument("unsafe schematic filename");
+        if (generation < 0) throw new PrestigeService.RejectedArgument("schematic generation is negative");
         if (compressedNbt == null || compressedNbt.length < 2 || compressedNbt.length > MAX_BYTES) {
-            throw new IllegalArgumentException("schematic is outside the size limit");
+            throw new PrestigeService.RejectedArgument("schematic is outside the size limit");
         }
         if ((compressedNbt[0] & 0xff) != 0x1f || (compressedNbt[1] & 0xff) != 0x8b) {
-            throw new IllegalArgumentException("schematic is not gzip encoded");
+            throw new PrestigeService.RejectedArgument("schematic is not gzip encoded");
         }
         byte[] sanitized = sanitize(compressedNbt, server);
         long size = sanitized.length;
@@ -86,7 +86,7 @@ public final class SchematicLibrary {
         Path entryPath = entries.resolve(id + ".tsv");
         if (!Files.isRegularFile(entryPath, LinkOption.NOFOLLOW_LINKS)
                 && countPublishedEntryFiles(entries) >= MAX_PUBLISHED) {
-            throw new IllegalStateException("published schematic catalog is full (" + MAX_PUBLISHED + ")");
+            throw new PrestigeService.Rejected("published schematic catalog is full (" + MAX_PUBLISHED + ")");
         }
         Path object = objects.resolve(digest + ".nbt");
         if (Files.exists(object) && (!Files.isRegularFile(object, LinkOption.NOFOLLOW_LINKS)
