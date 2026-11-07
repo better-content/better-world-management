@@ -120,6 +120,7 @@ dependencies {
     compileOnly(deobf("curse.maven:genetic-animals-313213:6134040"))
     compileOnly(deobf("curse.maven:complicated-bees-1100137:8277762"))
     compileOnly(deobf("curse.maven:serene-seasons-291874:6398227"))
+    compileOnly(deobf("curse.maven:cold-sweat-506194:7893262"))
     compileOnly(deobf("curse.maven:blood-magic-224791:${property("bloodmagic_file_id")}"))
     compileOnly(deobf("worldcondenser.lab:better-dimension-fonts:1.0.0"))
     compileOnly(deobf("worldcondenser.lab:lodestone:1.20.1-1.6.4.1"))

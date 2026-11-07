@@ -1,5 +1,7 @@
 package com.bettercontent.betterworldmanagement;
 
+import com.mojang.datafixers.util.Either;
+
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
@@ -7,6 +9,11 @@ import java.util.function.Supplier;
 /** Submit chunk-future acquisition away from the server tick; never wait for generation there. */
 final class LandingChunkRequests {
     private LandingChunkRequests() {}
+
+    /** A rejected FULL future is not generated terrain; callers may retry under their held ticket. */
+    static <T, F> T generatedOrNull(Either<T, F> result) {
+        return result.left().orElse(null);
+    }
 
     static <T> CompletableFuture<T> offServerThread(Supplier<CompletableFuture<T>> request) {
         Objects.requireNonNull(request);

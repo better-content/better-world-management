@@ -1,5 +1,6 @@
 package com.bettercontent.betterworldmanagement;
 
+import com.mojang.datafixers.util.Either;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -25,6 +26,11 @@ final class LandingChunkRequestsTest {
         assertFalse(result.isDone(), "a pending remote chunk must not block the caller");
         chunk.complete("full native chunk");
         assertEquals("full native chunk", result.get(3, TimeUnit.SECONDS));
+    }
+
+    @Test void unloadedChunkIsNeverAcceptedAsGeneratedTerrain() {
+        assertNull(LandingChunkRequests.generatedOrNull(Either.<String, String>right("Unloaded")));
+        assertEquals("generated", LandingChunkRequests.generatedOrNull(Either.<String, String>left("generated")));
     }
 
     @Test void requestFailureIsNotTurnedIntoAnEligibleLanding() {

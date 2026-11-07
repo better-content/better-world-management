@@ -10,8 +10,15 @@
     "SchematicFlightProvenanceMixin",
     "SchematicSubstitutionPlacementMixin",
     "AxiomPlayerListAccess",
+    "InitialSpawnLoginGateMixin",
     "AxiomRegionFileStorageAccess",
     "AxiomSavedDataAtomicMixin"
+  ],
+  "client": [
+    "CreateWorldScreenInvoker",
+    "CreateWorldScreenMixin",
+    "MinecraftInitialSpawnMixin",
+    "MinecraftTickInvoker"
   ],
   "injectors": {
     "defaultRequire": 1

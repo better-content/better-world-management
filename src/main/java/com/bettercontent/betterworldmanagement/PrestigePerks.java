@@ -231,7 +231,12 @@ public final class PrestigePerks {
 
     public static List<String> allowedBiomes(MinecraftServer server, Build build) throws IOException {
         PrestigeService.requirePrestigeReset(server);
-        return new ArrayList<>(readBiomeFile(server, "better_world_management-biomes.txt")).stream().distinct().sorted().toList();
+        String successorFile = "better_world_management-successor-biomes.txt";
+        Path legacy = server.getServerDirectory().toPath().resolve("config/better_world_management-biomes.txt");
+        // Preserve an existing administrator's customized successor list on upgrade.
+        // Initial worlds never read either file.
+        if (Files.exists(legacy)) successorFile = "better_world_management-biomes.txt";
+        return new ArrayList<>(readBiomeFile(server, successorFile)).stream().distinct().sorted().toList();
     }
 
     private static List<String> readBiomeFile(MinecraftServer server, String name) throws IOException {

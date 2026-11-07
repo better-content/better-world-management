@@ -31,8 +31,11 @@ public final class PrestigeMod {
         DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> {
             modBus.addListener(PrestigeClient::setup);
             MinecraftForge.EVENT_BUS.register(SchematicannonSubstitutionClient.class);
+            MinecraftForge.EVENT_BUS.register(SingleplayerInitialSpawn.class);
+            SingleplayerInitialSpawn.installBridge();
         });
         MinecraftForge.EVENT_BUS.register(PrestigeCoordinator.class);
+        MinecraftForge.EVENT_BUS.register(InitialSpawnCreation.class);
         MinecraftForge.EVENT_BUS.register(com.bettercontent.betterworldmanagement.worldshaping.WorldAxiomLifecycle.class);
         MinecraftForge.EVENT_BUS.register(com.bettercontent.betterworldmanagement.worldshaping.AxiomClaims.class);
         com.bettercontent.betterworldmanagement.worldshaping.exploration.ExplorationEffects.register();

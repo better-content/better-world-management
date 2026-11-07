@@ -5,7 +5,7 @@ import net.minecraft.server.MinecraftServer;
 
 /** Read-only onboarding bridge for the fresh world's shared-spawn preparation state. */
 public final class InitialSpawnService {
-    public enum Status { NOT_APPLICABLE, PENDING, RESOLVED, FALLBACK }
+    public enum Status { NOT_APPLICABLE, PENDING, RESOLVED, FALLBACK, FAILED }
 
     private InitialSpawnService() {}
 
