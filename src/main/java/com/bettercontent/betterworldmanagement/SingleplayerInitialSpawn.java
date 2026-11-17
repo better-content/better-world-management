@@ -279,11 +279,19 @@ public final class SingleplayerInitialSpawn {
     }
 
     private static boolean validParametricReceipt(List<String> lines) {
-        if (lines.size() != 12 || !lines.get(0).equals("BC_INITIAL_SPAWN_ATTEMPT_V3")) return false;
+        boolean v4 = lines.size() == 21 && lines.get(0).equals("BC_INITIAL_SPAWN_ATTEMPT_V4");
+        if (!v4 && (lines.size() != 12 || !lines.get(0).equals("BC_INITIAL_SPAWN_ATTEMPT_V3"))) return false;
         try {
             double base = receiptTemperature(lines.get(9), "base_temp_mc");
-            return new InitialSpawnClimate.Bounds(receiptTemperature(lines.get(10), "min_temp_mc"),
-                    receiptTemperature(lines.get(11), "max_temp_mc")).contains(base);
+            var bounds = new InitialSpawnClimate.Bounds(receiptTemperature(lines.get(10), "min_temp_mc"),
+                    receiptTemperature(lines.get(11), "max_temp_mc"));
+            if (!bounds.contains(base)) return false;
+            if (!v4) return true; // Previously published V3 worlds retain their original policy.
+            String[] coords = lines.get(7).split("\\t");
+            return coords.length == 4 && coords[0].equals("spawn")
+                    && InitialSpawnCreation.validNeighborhoodReceipt(lines,
+                    new net.minecraft.core.BlockPos(Integer.parseInt(coords[1]), Integer.parseInt(coords[2]),
+                            Integer.parseInt(coords[3])), bounds);
         } catch (IllegalArgumentException | IllegalStateException invalid) { return false; }
     }
 

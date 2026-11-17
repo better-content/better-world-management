@@ -181,6 +181,14 @@ tasks.withType<JavaExec>().configureEach {
     if (name == "runVisualServer") standardInput = System.`in`
 }
 tasks.withType<JavaCompile>().configureEach { options.release.set(17) }
+tasks.named<JavaCompile>("compileJava") {
+    // Incremental javac can omit the generated Mixin refmap when only non-Mixin sources change.
+    // Track the processor output so a staged runtime JAR cannot silently lose its mappings.
+    options.isIncremental = false
+    val refmap = layout.buildDirectory.file("tmp/compileJava/compileJava-refmap.json")
+    outputs.file(refmap)
+    doLast { check(refmap.get().asFile.isFile) { "World Management Mixin processor did not produce its refmap" } }
+}
 tasks.test {
     // ReflectionBoundaryTest reads every source set, not only main/test classes.
     // Native/visual fixture changes must invalidate this test task as well.

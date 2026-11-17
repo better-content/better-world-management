@@ -341,12 +341,7 @@ public final class InitialSpawnCreation {
         Attempt attempt;
         synchronized (ACTIVE) { attempt = ACTIVE.get(event.getServer()); }
         if (attempt == null || attempt.level == null) return;
-        if (attempt.timedOut()) {
-            if (attempt.totalExpired()) fail(attempt, "deadline", "10-minute spawn-preparation budget expired");
-            else fail(attempt, attempt.random ? "retry" : "error",
-                    "30-second seed search ended without a temperate biome");
-            return;
-        }
+        if (attempt.timedOut()) { failExpired(attempt); return; }
         if (System.nanoTime() - attempt.lastLog >= TimeUnit.SECONDS.toNanos(10)) {
             attempt.lastLog = System.nanoTime();
             report(attempt, "selecting", "waiting for a temperate shared spawn");
@@ -354,8 +349,8 @@ public final class InitialSpawnCreation {
         try {
             while (attempt.siteIndex < attempt.sites.size()) {
                 Site preliminary = attempt.sites.get(attempt.siteIndex++);
-                Site finalSite = siteAt(attempt.level, preliminary.feet(), attempt.bounds);
-                if (finalSite != null) { finish(attempt, finalSite); return; }
+                List<Site> neighborhood = neighborhoodAt(attempt.level, preliminary.feet(), attempt.bounds, attempt::timedOut);
+                if (!neighborhood.isEmpty() && !attempt.timedOut()) { finish(attempt, neighborhood.get(4)); return; }
             }
             // The pre-world estimate may differ from the real biome-manager zoom.
             // Survey the loaded biome source without a FULL chunk or terrain checks.
@@ -375,13 +370,36 @@ public final class InitialSpawnCreation {
                         QuartPos.fromBlock(x), sea, QuartPos.fromBlock(z)))) continue;
                 int y = generator.getBaseHeight(x, z, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
                         attempt.level, attempt.level.getChunkSource().randomState());
-                Site site = siteAt(attempt.level, new BlockPos(x, y, z), attempt.bounds);
-                if (site != null) { finish(attempt, site); return; }
+                List<Site> neighborhood = neighborhoodAt(attempt.level, new BlockPos(x, y, z), attempt.bounds, attempt::timedOut);
+                if (!neighborhood.isEmpty() && !attempt.timedOut()) { finish(attempt, neighborhood.get(4)); return; }
             }
         } catch (Exception error) {
             PrestigeMod.LOGGER.error("Initial spawn biome selection failed", error);
             fail(attempt, "error", "biome selection failed; see server diagnostics");
         }
+    }
+
+    private static void failExpired(Attempt attempt) {
+        if (attempt.totalExpired()) fail(attempt, "deadline", "10-minute spawn-preparation budget expired");
+        else fail(attempt, attempt.random ? "retry" : "error",
+                "30-second seed search ended without a qualifying 3-by-3 chunk neighborhood");
+    }
+
+    private static List<Site> neighborhoodAt(ServerLevel level, BlockPos spawn, InitialSpawnClimate.Bounds bounds) {
+        return neighborhoodAt(level, spawn, bounds, () -> false);
+    }
+
+    private static List<Site> neighborhoodAt(ServerLevel level, BlockPos spawn, InitialSpawnClimate.Bounds bounds,
+                                              java.util.function.BooleanSupplier expired) {
+        ChunkGenerator generator = level.getChunkSource().getGenerator();
+        RandomState state = level.getChunkSource().randomState();
+        return InitialSpawnNeighborhood.qualify(spawn, point -> {
+            if (expired.getAsBoolean()) return null;
+            if (point.equals(spawn)) return siteAt(level, point, bounds);
+            int y = generator.getBaseHeight(point.getX(), point.getZ(),
+                    Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, level, state);
+            return siteAt(level, new BlockPos(point.getX(), y, point.getZ()), bounds);
+        });
     }
 
     private static Site siteAt(ServerLevel level, BlockPos feet, InitialSpawnClimate.Bounds bounds) {
@@ -406,9 +424,11 @@ public final class InitialSpawnCreation {
             PrestigeCoordinator.configureSuccessorSpawn(attempt.server, attempt.level, selected.feet());
             String status = "resolved";
             BlockPos feet = attempt.level.getSharedSpawnPos();
-            Site finalSite = siteAt(attempt.level, feet, attempt.bounds);
+            List<Site> neighborhood = neighborhoodAt(attempt.level, feet, attempt.bounds, attempt::timedOut);
+            Site finalSite = neighborhood.isEmpty() ? null : neighborhood.get(4);
+            if (attempt.timedOut()) { failExpired(attempt); return; }
             if (!feet.equals(selected.feet()) || finalSite == null || !finalSite.biome().equals(selected.biome()))
-                throw new IllegalStateException("final spawn biome does not satisfy Cold Sweat bounds");
+                throw new IllegalStateException("final spawn or 3-by-3 neighborhood does not satisfy initial-spawn policy");
             // Persist level.dat and pending chunk saves, but never block the server tick
             // flushing every C2ME chunk. Normal shutdown flushes the closed candidate;
             // the supervisor verifies the saved spawn before atomic promotion.
@@ -427,18 +447,26 @@ public final class InitialSpawnCreation {
             Path partial = receipt.resolveSibling(receipt.getFileName() + ".partial");
             Files.createFile(partial, java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
                     java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")));
-            Files.writeString(partial, "BC_INITIAL_SPAWN_ATTEMPT_V3\n"
-                    + "attempt\t" + attempt.id + "\n"
-                    + "target\t" + attempt.target + "\n"
-                    + "number\t" + attempt.number + "\n"
-                    + "seed\t" + attempt.level.getSeed() + "\n"
-                    + "status\t" + status + "\n"
-                    + "provenance\t" + attempt.provenance + "\n"
-                    + "spawn\t" + feet.getX() + "\t" + feet.getY() + "\t" + feet.getZ() + "\n"
-                    + "biome\t" + finalSite.biome() + "\n"
-                    + "base_temp_mc\t" + Double.toString(finalSite.base()) + "\n"
-                    + "min_temp_mc\t" + Double.toString(attempt.bounds.min()) + "\n"
-                    + "max_temp_mc\t" + Double.toString(attempt.bounds.max()) + "\n");
+            StringBuilder evidence = new StringBuilder("BC_INITIAL_SPAWN_ATTEMPT_V4\n")
+                    .append("attempt\t").append(attempt.id).append('\n')
+                    .append("target\t").append(attempt.target).append('\n')
+                    .append("number\t").append(attempt.number).append('\n')
+                    .append("seed\t").append(attempt.level.getSeed()).append('\n')
+                    .append("status\t").append(status).append('\n')
+                    .append("provenance\t").append(attempt.provenance).append('\n')
+                    .append("spawn\t").append(feet.getX()).append('\t').append(feet.getY())
+                    .append('\t').append(feet.getZ()).append('\n')
+                    .append("biome\t").append(finalSite.biome()).append('\n')
+                    .append("base_temp_mc\t").append(finalSite.base()).append('\n')
+                    .append("min_temp_mc\t").append(attempt.bounds.min()).append('\n')
+                    .append("max_temp_mc\t").append(attempt.bounds.max()).append('\n');
+            for (int i = 0; i < neighborhood.size(); i++) {
+                Site site = neighborhood.get(i);
+                evidence.append("sample\t").append(i).append('\t').append(site.feet().getX())
+                        .append('\t').append(site.feet().getY()).append('\t').append(site.feet().getZ())
+                        .append('\t').append(site.biome()).append('\t').append(site.base()).append('\n');
+            }
+            Files.writeString(partial, evidence.toString());
             try { Files.move(partial, receipt, StandardCopyOption.ATOMIC_MOVE); }
             catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
                 Files.move(partial, receipt, StandardCopyOption.REPLACE_EXISTING);
@@ -467,6 +495,34 @@ public final class InitialSpawnCreation {
             Files.move(partial, file, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException error) { PrestigeMod.LOGGER.error("Could not write failed initial spawn state", error); }
         synchronized (ACTIVE) { ACTIVE.remove(attempt.server); }
+    }
+
+    static boolean validNeighborhoodReceipt(List<String> lines, BlockPos spawn, InitialSpawnClimate.Bounds bounds) {
+        try { return receiptNeighborhood(lines, spawn, bounds) != null; }
+        catch (NumberFormatException malformed) { return false; }
+    }
+
+    private static List<Site> receiptNeighborhood(List<String> lines, BlockPos spawn,
+                                                    InitialSpawnClimate.Bounds bounds) {
+        if (lines.size() != 12 + InitialSpawnNeighborhood.SAMPLE_COUNT) return null;
+        List<Site> samples = new java.util.ArrayList<>(InitialSpawnNeighborhood.SAMPLE_COUNT);
+        for (int i = 0; i < InitialSpawnNeighborhood.SAMPLE_COUNT; i++) {
+            String[] fields = lines.get(12 + i).split("\\t", -1);
+            if (fields.length != 7 || !fields[0].equals("sample") || !fields[1].equals(Integer.toString(i))
+                    || ResourceLocation.tryParse(fields[5]) == null) return null;
+            BlockPos expected = InitialSpawnNeighborhood.sample(spawn, i);
+            int x = Integer.parseInt(fields[2]);
+            int y = Integer.parseInt(fields[3]);
+            int z = Integer.parseInt(fields[4]);
+            double base = Double.parseDouble(fields[6]);
+            if (x != expected.getX() || z != expected.getZ() || !bounds.contains(base)
+                    || i == 4 && y != spawn.getY()) return null;
+            samples.add(new Site(new BlockPos(x, y, z), fields[5], base));
+        }
+        Site center = samples.get(4);
+        if (!lines.get(8).equals("biome\t" + center.biome())
+                || !lines.get(9).equals("base_temp_mc\t" + center.base())) return null;
+        return List.copyOf(samples);
     }
 
     private static boolean denyAdmission(String reason) {
@@ -514,10 +570,11 @@ public final class InitialSpawnCreation {
                         && (!server.isSingleplayer() || InitialSpawnClientBridge.intent(server) == null);
             }
             List<String> lines = Files.readAllLines(receipt);
+            boolean v4 = lines.size() == 21 && lines.get(0).equals("BC_INITIAL_SPAWN_ATTEMPT_V4");
             boolean v3 = lines.size() == 12 && lines.get(0).equals("BC_INITIAL_SPAWN_ATTEMPT_V3");
             boolean v2 = lines.size() == 9 && lines.get(0).equals("BC_INITIAL_SPAWN_ATTEMPT_V2");
-            if (!v3 && !v2) return denyAdmission("attempt receipt version or length");
-            if (v3 && !status.equals("resolved")) return denyAdmission("parametric receipt must be resolved");
+            if (!v4 && !v3 && !v2) return denyAdmission("attempt receipt version or length");
+            if ((v4 || v3) && !status.equals("resolved")) return denyAdmission("parametric receipt must be resolved");
             if (!lines.get(5).equals("status\t" + status)) return denyAdmission("attempt receipt status");
             if (!lines.get(2).equals("target\t" + root.getFileName())) {
                 PrestigeMod.LOGGER.warn("Initial spawn receipt target mismatch: receipt={}, saveDirectory={}",
@@ -547,12 +604,14 @@ public final class InitialSpawnCreation {
                     || saved.getInt("SpawnX") != spawn.getX() || saved.getInt("SpawnY") != spawn.getY()
                     || saved.getInt("SpawnZ") != spawn.getZ()))
                 return denyAdmission("fresh shared spawn differs from receipt");
-            if (v3) {
+            if (v4 || v3) {
                 double base = receiptTemperature(lines.get(9), "base_temp_mc");
                 double min = receiptTemperature(lines.get(10), "min_temp_mc");
                 double max = receiptTemperature(lines.get(11), "max_temp_mc");
                 InitialSpawnClimate.Bounds recorded = new InitialSpawnClimate.Bounds(min, max);
                 if (!recorded.contains(base)) return denyAdmission("receipt base temperature outside bounds");
+                List<Site> expected = v4 ? receiptNeighborhood(lines, spawn, recorded) : null;
+                if (v4 && expected == null) return denyAdmission("malformed 3-by-3 neighborhood receipt");
                 // Never displace an inhabited world after a later biome/config update.
                 if (!inhabited) {
                     InitialSpawnClimate.Bounds live = InitialSpawnClimate.loadedBounds(server);
@@ -561,6 +620,8 @@ public final class InitialSpawnCreation {
                             || Double.compare(actual.base(), base) != 0
                             || Double.compare(live.min(), min) != 0 || Double.compare(live.max(), max) != 0)
                         return denyAdmission("live shared-spawn biome or limits differ from receipt");
+                    if (v4 && !neighborhoodAt(server.overworld(), spawn, live).equals(expected))
+                        return denyAdmission("live 3-by-3 neighborhood differs from receipt");
                 }
             }
             if (!inhabited && status.equals("resolved") && server.overworld().getGameRules().getInt(GameRules.RULE_SPAWN_RADIUS) != 0)
